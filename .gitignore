@@ -1,0 +1,100 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environment
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# ===========================================
+# GENERIERTE DATEIEN (können wiederhergestellt werden)
+# ===========================================
+
+# Test outputs und Proof-Dateien
+proof_*/
+*_test_20*/
+*_session_20*/
+live_mosquito_proof_*/
+live_mosquito_session_*/
+
+# Videos (können regeneriert werden)
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+# Test-Daten (können regeneriert werden)
+mosquito_test/
+realistic_mosquito_test/
+motionimages/
+webcam_motion/
+
+# Reports und Logs (können regeneriert werden)
+*_report_*.json
+*_report_*.txt
+*_report_*.html
+mosquito_test_results_*.html
+mosquito_tracker_summary_*.mp4
+
+# Screenshots und generierte Bilder
+screenshot_*.png
+detection_frame_*.png
+diff_frame_*.png
+mosquito_frame_*.png
+realistic_mosquito_*.png
+frame_*.png
+
+# Compiled files
+*.exe
+*.obj
+*.pyd
+*.dll
+*.lib
+*.exp
+
+# Binary data files
+*.bin
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Log files
+*.log
+
+# Large files that can be regenerated
+core/ray_voxel.exe
+core/ray_voxel.obj
+core/process_image_cpp.cp39-win_amd64.pyd
