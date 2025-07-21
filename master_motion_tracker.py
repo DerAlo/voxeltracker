@@ -64,10 +64,25 @@ DETECTION_PROFILES = {
 
 # Video-Quellen
 VIDEO_SOURCES = {
-    "📷 Local Webcam": {
+    "📷 Webcam 0 (Primary)": {
         "type": "webcam",
         "source": 0,
-        "description": "Standard USB-Webcam"
+        "description": "Standard USB-Webcam (Index 0)"
+    },
+    "📷 Webcam 1": {
+        "type": "webcam", 
+        "source": 1,
+        "description": "Zweite USB-Webcam (Index 1)"
+    },
+    "📷 Webcam 2": {
+        "type": "webcam",
+        "source": 2, 
+        "description": "Dritte USB-Webcam (Index 2)"
+    },
+    "📷📷 Multi-Webcam": {
+        "type": "multi_webcam",
+        "sources": [0, 1, 2],
+        "description": "Alle verfügbaren Webcams gleichzeitig"
     },
     "🌊 Niagara Falls Live": {
         "type": "youtube_dual",
@@ -616,41 +631,88 @@ class MasterMotionTracker:
             return
             
         self.log("⏹️ Stoppe Motion Tracking...")
+        
+        # Set stop flag first
         self.is_tracking = False
         
-        # Wait a moment for tracking loop to notice
-        time.sleep(0.1)
-        
-        # Close OpenCV windows first
+        # Update GUI immediately to show stopping state
         try:
-            cv2.destroyAllWindows()
+            self.stop_btn.config(state=tk.DISABLED, text="⏳ Stopping...")
+            self.status_var.set("⏳ Stoppe Tracking...")
+            self.root.update()  # Force GUI update
         except Exception as e:
-            self.log(f"⚠️ OpenCV Window-Cleanup Warnung: {str(e)}")
-            
-        # Release captures safely
-        for name, cap in list(self.caps.items()):
-            try:
-                if cap and hasattr(cap, 'isOpened') and cap.isOpened():
-                    cap.release()
-                    self.log(f"✅ {name} capture released")
-            except Exception as e:
-                self.log(f"⚠️ {name} release Warnung: {str(e)}")
-                
-        self.caps.clear()
-        self.bg_subtractors.clear()
+            self.log(f"⚠️ GUI Update Fehler: {str(e)}")
         
-        # Update GUI safely
+        # Start cleanup in separate thread to avoid freezing
+        cleanup_thread = threading.Thread(target=self._cleanup_worker, daemon=True)
+        cleanup_thread.start()
+        
+    def _cleanup_worker(self):
+        """Cleanup worker - runs in separate thread"""
+        try:
+            # Wait for tracking loop to finish
+            if hasattr(self, 'tracking_thread') and self.tracking_thread.is_alive():
+                self.tracking_thread.join(timeout=2.0)  # Max 2 seconds wait
+            
+            # Close OpenCV windows
+            try:
+                cv2.destroyAllWindows()
+                cv2.waitKey(1)
+                time.sleep(0.1)  # Give windows time to close
+                cv2.destroyAllWindows()  # Second attempt
+            except Exception as e:
+                self.log(f"⚠️ OpenCV Window-Cleanup: {str(e)}")
+            
+            # Release captures safely
+            caps_to_release = list(self.caps.items()) if self.caps else []
+            for name, cap in caps_to_release:
+                try:
+                    if cap and hasattr(cap, 'isOpened'):
+                        if cap.isOpened():
+                            # For webcams, clear buffer first
+                            if 'webcam' in name.lower():
+                                try:
+                                    # Quick buffer clear
+                                    for _ in range(3):
+                                        ret, _ = cap.read()
+                                        if not ret:
+                                            break
+                                except Exception:
+                                    pass
+                            cap.release()
+                            self.log(f"✅ {name} released")
+                        
+                except Exception as e:
+                    self.log(f"⚠️ {name} release error: {str(e)}")
+                    
+            # Clear data structures
+            self.caps.clear()
+            self.bg_subtractors.clear()
+            
+            # Final OpenCV cleanup
+            try:
+                cv2.destroyAllWindows()
+                cv2.waitKey(1)
+            except Exception:
+                pass
+            
+            # Update GUI in main thread
+            self.root.after(0, self._finalize_stop)
+            
+        except Exception as e:
+            self.log(f"❌ Cleanup error: {str(e)}")
+            # Still try to update GUI
+            self.root.after(0, self._finalize_stop)
+            
+    def _finalize_stop(self):
+        """Finalize stop in main thread"""
         try:
             self.start_btn.config(state=tk.NORMAL)
-            self.stop_btn.config(state=tk.DISABLED)
+            self.stop_btn.config(state=tk.DISABLED, text="⏹️ Stop Tracking")
             self.status_var.set("⏹️ Motion Tracking gestoppt")
             self.log("✅ Motion Tracking erfolgreich gestoppt")
         except Exception as e:
-            self.log(f"⚠️ GUI Update Warnung: {str(e)}")
-            
-        # Force garbage collection
-        import gc
-        gc.collect()
+            self.log(f"⚠️ GUI finalize error: {str(e)}")
         
     def _tracking_worker(self):
         """Main tracking worker thread"""
@@ -690,12 +752,44 @@ class MasterMotionTracker:
         if source['type'] == 'webcam':
             cap = cv2.VideoCapture(source['source'])
             if cap.isOpened():
-                self.caps['webcam'] = cap
-                self.bg_subtractors['webcam'] = cv2.createBackgroundSubtractorMOG2()
-                self.log("✅ Webcam initialisiert")
+                webcam_name = f"webcam_{source['source']}"
+                self.caps[webcam_name] = cap
+                self.bg_subtractors[webcam_name] = cv2.createBackgroundSubtractorMOG2()
+                self.log(f"✅ Webcam {source['source']} initialisiert")
                 return True
             else:
-                self.log("❌ Webcam konnte nicht geöffnet werden")
+                self.log(f"❌ Webcam {source['source']} konnte nicht geöffnet werden")
+                return False
+                
+        elif source['type'] == 'multi_webcam':
+            success_count = 0
+            total_sources = source['sources']
+            
+            for webcam_idx in total_sources:
+                try:
+                    cap = cv2.VideoCapture(webcam_idx)
+                    if cap.isOpened():
+                        # Test ob die Webcam wirklich verfügbar ist
+                        ret, frame = cap.read()
+                        if ret and frame is not None:
+                            webcam_name = f"webcam_{webcam_idx}"
+                            self.caps[webcam_name] = cap
+                            self.bg_subtractors[webcam_name] = cv2.createBackgroundSubtractorMOG2()
+                            self.log(f"✅ Webcam {webcam_idx} initialisiert")
+                            success_count += 1
+                        else:
+                            cap.release()
+                            self.log(f"⚠️ Webcam {webcam_idx} verfügbar aber liefert keine Frames")
+                    else:
+                        self.log(f"⚠️ Webcam {webcam_idx} nicht verfügbar")
+                except Exception as e:
+                    self.log(f"❌ Webcam {webcam_idx} Fehler: {str(e)}")
+                    
+            if success_count > 0:
+                self.log(f"✅ Multi-Webcam: {success_count}/{len(total_sources)} Kameras aktiv")
+                return True
+            else:
+                self.log("❌ Keine Webcams konnten initialisiert werden")
                 return False
                 
         elif source['type'] == 'youtube_single':
@@ -916,17 +1010,18 @@ class MasterMotionTracker:
         return result_frame, motion_count
         
     def _display_frames(self, frames, motion_counts, frame_count, start_time):
-        """Display processed frames"""
+        """Display processed frames - supports unlimited cameras"""
         try:
+            fps = frame_count / (time.time() - start_time + 0.001)
+            
             if len(frames) == 1:
                 # Single frame display
                 name, frame = list(frames.items())[0]
-                fps = frame_count / (time.time() - start_time + 0.001)
                 cv2.putText(frame, f'FPS: {fps:.1f}', 
                            (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
                 cv2.imshow(f'Motion Tracker - {name}', frame)
                 
-            elif len(frames) >= 2:
+            elif len(frames) == 2:
                 # Side-by-side dual display
                 stream_names = list(frames.keys())
                 frame1 = frames[stream_names[0]]
@@ -936,6 +1031,65 @@ class MasterMotionTracker:
                 height = min(frame1.shape[0], frame2.shape[0], 400)
                 frame1_resized = cv2.resize(frame1, (int(frame1.shape[1] * height / frame1.shape[0]), height))
                 frame2_resized = cv2.resize(frame2, (int(frame2.shape[1] * height / frame2.shape[0]), height))
+                
+                # Add FPS info
+                cv2.putText(frame1_resized, f'FPS: {fps:.1f}', 
+                           (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
+                
+                # Combine frames horizontally
+                combined = np.hstack([frame1_resized, frame2_resized])
+                cv2.imshow('Motion Tracker - Dual View', combined)
+                
+            else:
+                # Multi-camera grid display (3+ cameras)
+                stream_names = list(frames.keys())
+                num_cameras = len(frames)
+                
+                # Calculate grid dimensions (prefer wider than tall)
+                cols = int(np.ceil(np.sqrt(num_cameras)))
+                rows = int(np.ceil(num_cameras / cols))
+                
+                # Resize all frames to same size for grid
+                target_width = 320  # Smaller for multiple views
+                target_height = 240
+                
+                grid_frames = []
+                for i, name in enumerate(stream_names):
+                    frame = frames[name]
+                    resized = cv2.resize(frame, (target_width, target_height))
+                    
+                    # Add FPS only to first frame
+                    if i == 0:
+                        cv2.putText(resized, f'FPS: {fps:.1f}', 
+                                   (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+                    
+                    grid_frames.append(resized)
+                
+                # Pad with black frames if needed
+                while len(grid_frames) < rows * cols:
+                    black_frame = np.zeros((target_height, target_width, 3), dtype=np.uint8)
+                    grid_frames.append(black_frame)
+                
+                # Create grid
+                grid_rows = []
+                for row in range(rows):
+                    row_frames = grid_frames[row * cols:(row + 1) * cols]
+                    if row_frames:
+                        grid_row = np.hstack(row_frames)
+                        grid_rows.append(grid_row)
+                
+                if grid_rows:
+                    grid = np.vstack(grid_rows)
+                    cv2.imshow(f'Motion Tracker - Multi-Cam ({num_cameras} cameras)', grid)
+                
+        except Exception as e:
+            self.log(f"⚠️ Display error: {str(e)}")
+            # Fallback: show individual windows
+            for name, frame in frames.items():
+                try:
+                    cv2.imshow(f'Tracker - {name}', frame)
+                except:
+                    pass
                 
                 # Combine horizontally
                 combined = np.hstack([frame1_resized, frame2_resized])

@@ -1,4 +1,24 @@
-# 🎯 Pixeltovoxelprojector - Motion Tracking System
+# 🎯 Pixeltovoxel### 💡 Master Tool Highlights:
+- ✅ **Alle Profile**: Mosquito 🦟, Bird 🐦, Aircraft ✈️, Custom 🎯
+- ✅ **Alle Quellen**: Webcam 📷, Multi-Webcam 📷📷, YouTube Live-Streams 🌊, Custom URLs 📺
+- ✅ **Einheitliche GUI**: Alles in einem Tool
+- ✅ **Live Settings**: Anpassbare Parameter während der Laufzeit
+- ✅ **Auto-Screenshot**: 's' Taste für Beweise speichern
+- ✅ **Safe Stop**: Kein Absturz beim Stoppen (Webcam-optimiert)
+- ✅ **Real-time Dashboard**: Live-Monitoring mit Grafiken 📊
+- ✅ **3D Viewer**: Motion-Daten in 3D visualisieren 🎲
+
+### 🔬 Field-Testing mit YouTube Live-Streams:
+1. 🚀 **Starten Sie** `investigation/niagara_motion_demo.py` für GUI-Demo mit Buttons
+2. 🎯 **Testen Sie** `investigation/overlapping_webcam_investigation.py` für überlappende Perspektiven  
+3. 🔬 **Experimentieren Sie** mit den anderen investigation Tools
+
+### 🦟 Lokale Mücken-Tests:
+1. 🚀 **Starten Sie** `mosquito_tracking/live_mosquito_tracker.py`
+2. 🎯 **Positionieren Sie** eine Mücke vor der Kamera
+3. 📹 **Schauen Sie zu** wie das System sie erkennt!
+
+**Das System ist vollständig getestet und einsatzbereit für Mücken-Tracking** mit normalen Webcams! 🦟✅- Motion Tracking System
 
 > **TL;DR:** Hochpräzises Motion-Tracking System das Pixel-Bewegungen zu 3D-Voxeln projiziert. **Speziell optimiert **Das System ist vollständig getestet und einsatzbereit - jetzt mit einheitlichem Master-Tool!**
 
@@ -26,7 +46,30 @@
 2. 🎯 **Testen Sie** `investigation/overlapping_webcam_investigation.py` für überlappende Perspektiven  
 3. 🔬 **Experimentieren Sie** mit den anderen investigation Toolscking** mit normalen Webcams! 🦟✅
 
-## 🚀 Was macht das System?
+## �📷 Multi-Webcam Setup
+
+Das System unterstützt jetzt **mehrere Webcams gleichzeitig**:
+
+### 🎯 Verfügbare Webcam-Modi:
+1. **📷 Webcam 0 (Primary)** - Einzelne Standard-Webcam
+2. **📷 Webcam 1** - Zweite USB-Webcam  
+3. **📷 Webcam 2** - Dritte USB-Webcam
+4. **📷📷 Multi-Webcam** - Alle verfügbaren Kameras automatisch erkennen
+
+### 💡 Multi-Webcam Vorteile:
+- ✅ **Mehrere Perspektiven** gleichzeitig
+- ✅ **Überlappende Bereiche** für bessere Abdeckung
+- ✅ **Automatische Erkennung** verfügbarer Kameras
+- ✅ **Individuelles Tracking** pro Kamera
+- ✅ **Gemeinsames Dashboard** für alle Streams
+
+### 🔧 Setup:
+1. **Verbinden** Sie mehrere USB-Webcams
+2. **Wählen** Sie "📷📷 Multi-Webcam" als Video-Quelle
+3. **Klicken** Sie "🔍 Test Source" um verfügbare Kameras zu prüfen
+4. **Starten** Sie das Tracking - alle Kameras werden parallel verarbeitet
+
+## �🚀 Was macht das System?
 
 Dieses System erkennt und verfolgt **kleinste Bewegungen** (sogar 1-3 Pixel große Objekte) in Echtzeit und projiziert sie in einen 3D-Voxel-Raum. Perfekt für:
 
@@ -59,12 +102,15 @@ python master_motion_tracker.py
 ```
 
 **Features:**
-- 🦟 **Mücken-Profil** + lokale Webcam
-- 🐦 **Vogel-Profil** + lokale Webcam  
-- ✈️ **Flugzeug-Profil** + lokale Webcam
+- 🦟 **Mücken-Profil** + lokale Webcam(s)
+- 🐦 **Vogel-Profil** + lokale Webcam(s)  
+- ✈️ **Flugzeug-Profil** + lokale Webcam(s)
+- 📷📷 **Multi-Webcam** + alle verfügbaren Kameras gleichzeitig
 - 🌊 **Niagara Falls Demo** + YouTube Live-Streams
 - 📺 **Custom URLs** für eigene Quellen
 - ⚙️ **Advanced Settings** für manuelle Anpassung
+- 📊 **Real-time Dashboard** für Live-Monitoring
+- 🎲 **3D Viewer** für Motion-Datenanalyse
 
 **Fertig!** Alle Modi in einem Tool! 🎉
 
