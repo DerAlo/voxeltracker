@@ -26,6 +26,29 @@ from datetime import datetime
 from collections import deque
 import pyvista as pv
 
+# OpenGL-Kompatibilitätskonfiguration für Windows
+try:
+    import os
+    # Setze OpenGL-Environment für bessere Stabilität
+    os.environ['PYVISTA_OFF_SCREEN'] = 'false'
+    os.environ['PYVISTA_USE_PANEL'] = 'false'
+    os.environ['VTK_SILENCE_GET_VOID_POINTER_WARNINGS'] = '1'
+    
+    # Teste PyVista OpenGL-Kompatibilität
+    pv.set_plot_theme("dark")
+    
+    # Teste minimalen Plotter
+    test_plotter = pv.Plotter(off_screen=True, window_size=[100, 100])
+    test_plotter.close()
+    
+    PYVISTA_AVAILABLE = True
+    print("✅ PyVista OpenGL-Test erfolgreich")
+    
+except Exception as pv_error:
+    PYVISTA_AVAILABLE = False
+    print(f"⚠️ PyVista OpenGL-Warnung: {pv_error}")
+    print("📐 3D Triangulation wird im Fallback-Modus laufen")
+
 # Detection Profiles für verschiedene Ziele
 DETECTION_PROFILES = {
     "🦟 Mosquito": {
@@ -119,6 +142,8 @@ class MasterMotionTracker:
         self.current_source = None
         self.tracking_thread = None
         self.motion_data = deque(maxlen=1000)  # Store motion data for 3D visualization
+        self.camera_motion_data = {}  # Store motion data per camera for triangulation
+        self.triangulation_active = False  # Flag für Live-Triangulation
         self.current_motion_counts = {}  # Für Dashboard
         self.current_fps = 0  # Für Dashboard
         self.tracking_start_time = 0  # Für Dashboard
@@ -202,6 +227,10 @@ class MasterMotionTracker:
         self.dashboard_btn = ttk.Button(control_frame, text="📊 Dashboard", 
                                        command=self.open_dashboard)
         self.dashboard_btn.pack(side=tk.LEFT, padx=5)
+        
+        self.triangulation_btn = ttk.Button(control_frame, text="📐 3D Triangulation", 
+                                           command=self.open_triangulation_view)
+        self.triangulation_btn.pack(side=tk.LEFT, padx=5)
         
         # Advanced settings (collapsible)
         self.settings_visible = False
@@ -436,6 +465,774 @@ class MasterMotionTracker:
         except Exception as e:
             messagebox.showerror("Dashboard Error", f"Dashboard Fehler: {str(e)}")
 
+    def open_triangulation_view(self):
+        """Öffne die Live 3D Camera Triangulation View mit OpenGL-Fehlerbehandlung"""
+        # Verhindere Mehrfachklicks
+        if hasattr(self, 'triangulation_starting') and self.triangulation_starting:
+            self.log("⚠️ Triangulation startet bereits, bitte warten...")
+            return
+            
+        if hasattr(self, 'triangulation_active') and self.triangulation_active:
+            messagebox.showinfo("Triangulation", "3D Triangulation View läuft bereits!")
+            return
+            
+        if not self.is_tracking:
+            messagebox.showwarning("Triangulation", "Bitte starten Sie zuerst das Motion Tracking!")
+            return
+        
+        # Setze Starting-Flag
+        self.triangulation_starting = True
+        self.log("🚀 Starte 3D Triangulation...")
+        
+        # Prüfe PyVista-Verfügbarkeit
+        if not PYVISTA_AVAILABLE:
+            self.triangulation_starting = False
+            messagebox.showerror("3D Triangulation", 
+                               "PyVista 3D-Rendering nicht verfügbar!\n\n"
+                               "Mögliche Lösungen:\n"
+                               "• Grafiktreiber aktualisieren\n"
+                               "• pip install --upgrade pyvista\n"
+                               "• Neustart des Systems")
+            self.triangulation_starting = False
+            return
+            
+        # Beende vorherigen Thread falls aktiv
+        if hasattr(self, 'triangulation_thread'):
+            try:
+                if self.triangulation_thread.is_alive():
+                    self.triangulation_active = False
+                    self.triangulation_thread.join(timeout=2.0)  # Warte max 2 Sekunden
+            except Exception as e:
+                self.log(f"⚠️ Thread-Cleanup-Fehler: {e}")
+            
+            # Entferne die Thread-Referenz komplett
+            delattr(self, 'triangulation_thread')
+        
+        self.triangulation_active = True
+        
+        # Erstelle neuen Thread (Threads können nur einmal gestartet werden)
+        self.triangulation_thread = threading.Thread(target=self._triangulation_worker, daemon=True)
+        self.triangulation_thread.start()
+        
+        # Reset Starting-Flag
+        self.triangulation_starting = False
+        
+    def _triangulation_worker(self):
+        """Live 3D Triangulation Worker Thread"""
+        try:
+            import numpy as np
+            
+            # Konfiguriere PyVista für robustes Windows-Rendering
+            import pyvista as pv
+            pv.set_plot_theme("dark")
+            
+            # Windows-spezifische OpenGL-Konfiguration
+            try:
+                import os
+                os.environ['PYVISTA_OFF_SCREEN'] = 'false'
+                os.environ['PYVISTA_USE_PANEL'] = 'false'
+                
+                # Robuste OpenGL-Initialisierung
+                try:
+                    plotter = pv.Plotter(title="🎯 LIVE 3D Triangulation - Mosquito & Object Tracking",
+                                       window_size=[1200, 800])  # Entferne multi_samples
+                    plotter.background_color = 'black'
+                except Exception as plotter_error:
+                    # Fallback: Noch einfacherer Plotter
+                    self.log(f"⚠️ Standard Plotter fehlgeschlagen: {plotter_error}")
+                    plotter = pv.Plotter(window_size=[1000, 700])
+                    plotter.background_color = 'black'
+                
+                # Sicherer Anti-Aliasing-Test
+                try:
+                    plotter.enable_anti_aliasing()
+                except Exception:
+                    pass  # Fallback wenn nicht unterstützt
+                    
+                # Depth peeling nur wenn unterstützt
+                try:
+                    if hasattr(plotter, 'enable_depth_peeling'):
+                        plotter.enable_depth_peeling()
+                except Exception:
+                    pass  # Fallback
+                    
+            except Exception as e:
+                # Absoluter Fallback: Minimal-Plotter
+                self.log(f"⚠️ Advanced OpenGL features nicht verfügbar: {e}")
+                try:
+                    plotter = pv.Plotter()
+                    plotter.background_color = 'black'
+                except Exception as final_error:
+                    self.log(f"❌ Plotter-Erstellung vollständig fehlgeschlagen: {final_error}")
+                    messagebox.showerror("3D Triangulation", f"PyVista-Initialisierung fehlgeschlagen: {final_error}")
+                    self.triangulation_active = False
+                    return
+            
+            # Standard Kamera-Positionen (editierbar durch User)
+            self.camera_positions = {
+                'webcam_0': np.array([0, 0, 0]),      # Zentrum
+                'webcam_1': np.array([3, 0, 0]),      # Rechts  
+                'webcam_2': np.array([1.5, 3, 0]),    # Oben
+                'youtube': np.array([0, 1.5, 2])      # YouTube Kamera
+            }
+            
+            # Farben für verschiedene Kameras
+            self.camera_colors = {
+                'webcam_0': 'red',
+                'webcam_1': 'green', 
+                'webcam_2': 'blue',
+                'youtube': 'yellow'
+            }
+            
+            # Setup 3D Scene einmalig
+            self._setup_3d_scene(plotter)
+            
+            # Interaktive GUI für Kamera-Positionierung
+            self._setup_camera_controls(plotter)
+            
+            # Steuerungstext
+            plotter.add_text("🎯 LIVE 3D TRIANGULATION\n\n"
+                            "📷 Kamera-Positionen:\n"
+                            "• Webcam 0: ROT (Zentrum)\n"
+                            "• Webcam 1: GRÜN (Rechts)\n" 
+                            "• Webcam 2: BLAU (Oben)\n"
+                            "• YouTube: GELB (Erhöht)\n\n"
+                            "🦟 LIVE TRACKING:\n"
+                            "• Orange Strahlen: Motion Detection\n"
+                            "• Cyan Kugel: Trianguliertes Objekt\n"
+                            "• Koordinaten werden live aktualisiert\n\n"
+                            "🎮 Steuerung:\n"
+                            "• Maus-Drag: 3D Navigation\n"
+                            "• Rad: Zoom\n"
+                            "• R: Reset View\n"
+                            "• Q: Beenden", 
+                            position='upper_left', font_size=9, color='white')
+            
+            # Starte Plotter OHNE show() zunächst
+            # show() kann Thread-Konflikte verursachen
+            
+            # Live-Update-Schleife OHNE plotter.show()
+            self._run_live_updates_without_show(plotter)
+            
+            # Cleanup nach Schließen
+            self.triangulation_active = False
+            
+        except ImportError:
+            messagebox.showerror("Triangulation Error", 
+                               "PyVista nicht installiert!\nBitte installieren: pip install pyvista")
+        except Exception as e:
+            messagebox.showerror("Triangulation Error", f"3D Triangulation Fehler: {str(e)}")
+        finally:
+            self.triangulation_active = False
+            
+    def _run_live_updates_without_show(self, plotter):
+        """Führe Live-Updates ohne plotter.show() aus um Thread-Konflikte zu vermeiden"""
+        try:
+            # Show the plotter window once
+            plotter.show(interactive=False, auto_close=False)
+            
+            # Run live update loop
+            update_counter = 0
+            error_count = 0
+            max_errors = 10
+            
+            while self.triangulation_active and self.is_tracking and error_count < max_errors:
+                try:
+                    # Robuste Render-Zyklen mit Fehlerbehandlung
+                    if update_counter % 5 == 0:  # Weniger häufige komplette Updates
+                        self._clear_motion_objects(plotter)
+                    
+                    if self.camera_motion_data:
+                        self._draw_live_camera_rays(plotter)
+                        self._calculate_live_triangulation(plotter)
+                    
+                    # Sehr konservative Render-Updates um OpenGL-Konflikte zu vermeiden
+                    if update_counter % 3 == 0:  # Render nur alle 3 Frames
+                        try:
+                            plotter.render()
+                            error_count = 0  # Reset error counter bei erfolgreichem Render
+                        except Exception as render_error:
+                            error_count += 1
+                            self.log(f"⚠️ Render-Fehler {error_count}/{max_errors}: {render_error}")
+                            if error_count >= max_errors:
+                                self.log("❌ Zu viele Render-Fehler, stoppe Live-Updates")
+                                break
+                    
+                    update_counter += 1
+                    time.sleep(0.2)  # Längere Pause für stabileres Rendering (5 FPS)
+                    
+                except Exception as e:
+                    error_count += 1
+                    self.log(f"⚠️ Live update error {error_count}/{max_errors}: {e}")
+                    time.sleep(1.0)  # Längere Pause bei Fehlern
+                    if error_count >= max_errors:
+                        self.log("❌ Zu viele Update-Fehler, stoppe Live-Updates")
+                        break
+                        
+        except Exception as e:
+            self.log(f"❌ Live-Updates fehlgeschlagen: {e}")
+            
+    def _setup_3d_scene(self, plotter):
+        """Setup der 3D Szene mit Koordinatensystem und Kameras"""
+        # Koordinatenachsen mit korrekter PyVista API
+        try:
+            # Versuche moderne PyVista API
+            axes = pv.Axes(show_actor=True, actor_scale=1.0, line_width=3)
+            plotter.add_actor(axes)
+        except AttributeError:
+            # Fallback: Manuelle Achsen erstellen
+            # X-Achse (rot)
+            x_line = pv.Line(pointa=np.array([0.0, 0.0, 0.0], dtype=np.float32), 
+                            pointb=np.array([2.0, 0.0, 0.0], dtype=np.float32))
+            plotter.add_mesh(x_line, color='red', line_width=4, label='X-Axis')
+            
+            # Y-Achse (grün)
+            y_line = pv.Line(pointa=np.array([0.0, 0.0, 0.0], dtype=np.float32), 
+                            pointb=np.array([0.0, 2.0, 0.0], dtype=np.float32))
+            plotter.add_mesh(y_line, color='green', line_width=4, label='Y-Axis')
+            
+            # Z-Achse (blau)
+            z_line = pv.Line(pointa=np.array([0.0, 0.0, 0.0], dtype=np.float32), 
+                            pointb=np.array([0.0, 0.0, 2.0], dtype=np.float32))
+            plotter.add_mesh(z_line, color='blue', line_width=4, label='Z-Axis')
+            
+            # Achsen-Labels
+            plotter.add_point_labels([[2, 0, 0]], ['X'], point_size=5, font_size=12, text_color='red')
+            plotter.add_point_labels([[0, 2, 0]], ['Y'], point_size=5, font_size=12, text_color='green')
+            plotter.add_point_labels([[0, 0, 2]], ['Z'], point_size=5, font_size=12, text_color='blue')
+        
+        # Boden-Grid für bessere Orientierung
+        grid = pv.Plane(center=(2, 1, -0.5), direction=(0, 0, 1), 
+                       i_size=6, j_size=4, i_resolution=10, j_resolution=10)
+        plotter.add_mesh(grid, style='wireframe', color='gray', opacity=0.3)
+        
+        # Zeichne Kameras mit Sichtfeldern
+        for camera_name, position in self.camera_positions.items():
+            if camera_name in self.caps or camera_name in ['youtube']:  # Nur aktive Kameras
+                # Kamera als Pyramide darstellen
+                camera_mesh = self._create_camera_mesh(position)
+                color = self.camera_colors.get(camera_name, 'white')
+                plotter.add_mesh(camera_mesh, color=color, opacity=0.8)
+                
+                # Sichtfeld-Kegel für bessere Visualisierung
+                self._add_camera_fov(plotter, camera_name, position, color)
+                
+                # Kamera-Label
+                plotter.add_point_labels([position], [camera_name], 
+                                       point_color=color, point_size=10, 
+                                       font_size=12, text_color='white')
+    
+    def _add_camera_fov(self, plotter, camera_name, position, color):
+        """Füge Sichtfeld-Visualisierung für Kamera hinzu"""
+        # Field of View Kegel (45° Öffnungswinkel)
+        fov_angle = 45  # Grad
+        fov_distance = 3.0  # 3 Meter Sichtweite
+        
+        # Berechne Kegel-Richtung basierend auf Kamera-Orientierung
+        if camera_name == 'webcam_0':
+            direction = np.array([0, 1, 0])  # Zentrum schaut nach vorne
+        elif camera_name == 'webcam_1':
+            direction = np.array([-1, 0, 0])  # Rechts schaut nach links
+        elif camera_name == 'webcam_2':
+            direction = np.array([0, -1, 0])  # Oben schaut nach unten
+        else:
+            direction = np.array([0, 0, -1])  # YouTube schaut nach unten
+        
+        # Erstelle Sichtfeld-Kegel
+        cone_center = position + direction * (fov_distance / 2)
+        fov_cone = pv.Cone(center=cone_center, direction=direction,
+                          height=fov_distance, radius=fov_distance * np.tan(np.radians(fov_angle/2)),
+                          resolution=8)
+        
+        # Füge transparenten Sichtfeld-Kegel hinzu
+        plotter.add_mesh(fov_cone, color=color, opacity=0.2, style='wireframe')
+                
+    def _setup_camera_controls(self, plotter):
+        """Setup interaktive Kamera-Positionierungs-Controls"""
+        # Checkbox für jede Kamera für einfache Positionierung
+        control_text = ("📍 KAMERA-POSITIONIERUNG:\n"
+                       "• Drag & Drop Kameras in 3D\n"
+                       "• Rechtsklick: Kamera-Menü\n"
+                       "• Optimal für Triangulation:\n"
+                       "  - 90° Winkel zwischen Kameras\n"
+                       "  - 2-4 Meter Abstand\n"
+                       "  - Überlappende Sichtfelder\n\n"
+                       "🎮 LIVE CONTROLS:\n"
+                       "• 1-4: Kamera auswählen & bewegen\n"
+                       "• X/Y/Z: Achse sperren\n"
+                       "• R: Reset Positionen")
+        
+        plotter.add_text(control_text, position='lower_left', font_size=8, color='yellow')
+        
+        # Interaktive Kamera-Positionierung mit korrekter PyVista Callback-Syntax
+        def on_key_1():
+            """Kamera 1 auswählen"""
+            self.selected_camera = 'webcam_0'
+            self.log("📷 Kamera ausgewählt: webcam_0")
+            
+        def on_key_2():
+            """Kamera 2 auswählen"""
+            self.selected_camera = 'webcam_1'
+            self.log("📷 Kamera ausgewählt: webcam_1")
+            
+        def on_key_3():
+            """Kamera 3 auswählen"""
+            self.selected_camera = 'webcam_2'
+            self.log("📷 Kamera ausgewählt: webcam_2")
+            
+        def on_key_4():
+            """Kamera 4 auswählen"""
+            self.selected_camera = 'youtube'
+            self.log("📷 Kamera ausgewählt: youtube")
+            
+        def on_key_r():
+            """Reset Kamera-Positionen"""
+            self._reset_camera_positions()
+            self.log("📍 Kamera-Positionen zurückgesetzt")
+            
+        def on_key_w():
+            """Kamera vorwärts bewegen (Y+)"""
+            if hasattr(self, 'selected_camera') and self.selected_camera:
+                step = 0.5
+                pos = self.camera_positions[self.selected_camera]
+                self.camera_positions[self.selected_camera] = pos + np.array([0, step, 0])
+                new_pos = self.camera_positions[self.selected_camera]
+                self.log(f"📍 {self.selected_camera}: X={new_pos[0]:.1f}, Y={new_pos[1]:.1f}, Z={new_pos[2]:.1f}")
+                
+        def on_key_s():
+            """Kamera rückwärts bewegen (Y-)"""
+            if hasattr(self, 'selected_camera') and self.selected_camera:
+                step = 0.5
+                pos = self.camera_positions[self.selected_camera]
+                self.camera_positions[self.selected_camera] = pos + np.array([0, -step, 0])
+                new_pos = self.camera_positions[self.selected_camera]
+                self.log(f"📍 {self.selected_camera}: X={new_pos[0]:.1f}, Y={new_pos[1]:.1f}, Z={new_pos[2]:.1f}")
+                
+        def on_key_a():
+            """Kamera links bewegen (X-)"""
+            if hasattr(self, 'selected_camera') and self.selected_camera:
+                step = 0.5
+                pos = self.camera_positions[self.selected_camera]
+                self.camera_positions[self.selected_camera] = pos + np.array([-step, 0, 0])
+                new_pos = self.camera_positions[self.selected_camera]
+                self.log(f"📍 {self.selected_camera}: X={new_pos[0]:.1f}, Y={new_pos[1]:.1f}, Z={new_pos[2]:.1f}")
+                
+        def on_key_d():
+            """Kamera rechts bewegen (X+)"""
+            if hasattr(self, 'selected_camera') and self.selected_camera:
+                step = 0.5
+                pos = self.camera_positions[self.selected_camera]
+                self.camera_positions[self.selected_camera] = pos + np.array([step, 0, 0])
+                new_pos = self.camera_positions[self.selected_camera]
+                self.log(f"📍 {self.selected_camera}: X={new_pos[0]:.1f}, Y={new_pos[1]:.1f}, Z={new_pos[2]:.1f}")
+                
+        def on_key_q():
+            """Kamera hoch bewegen (Z+)"""
+            if hasattr(self, 'selected_camera') and self.selected_camera:
+                step = 0.5
+                pos = self.camera_positions[self.selected_camera]
+                self.camera_positions[self.selected_camera] = pos + np.array([0, 0, step])
+                new_pos = self.camera_positions[self.selected_camera]
+                self.log(f"📍 {self.selected_camera}: X={new_pos[0]:.1f}, Y={new_pos[1]:.1f}, Z={new_pos[2]:.1f}")
+                
+        def on_key_e():
+            """Kamera runter bewegen (Z-)"""
+            if hasattr(self, 'selected_camera') and self.selected_camera:
+                step = 0.5
+                pos = self.camera_positions[self.selected_camera]
+                self.camera_positions[self.selected_camera] = pos + np.array([0, 0, -step])
+                new_pos = self.camera_positions[self.selected_camera]
+                self.log(f"📍 {self.selected_camera}: X={new_pos[0]:.1f}, Y={new_pos[1]:.1f}, Z={new_pos[2]:.1f}")
+        
+        # Keyboard callbacks hinzufügen (PyVista-kompatibel ohne Argumente)
+        plotter.add_key_event('1', on_key_1)
+        plotter.add_key_event('2', on_key_2)
+        plotter.add_key_event('3', on_key_3)
+        plotter.add_key_event('4', on_key_4)
+        plotter.add_key_event('w', on_key_w)
+        plotter.add_key_event('s', on_key_s)
+        plotter.add_key_event('a', on_key_a)
+        plotter.add_key_event('d', on_key_d)
+        plotter.add_key_event('q', on_key_q)
+        plotter.add_key_event('e', on_key_e)
+        plotter.add_key_event('r', on_key_r)
+    
+    def _reset_camera_positions(self):
+        """Reset Kamera-Positionen zu Standard-Werten"""
+        self.camera_positions = {
+            'webcam_0': np.array([0, 0, 0]),      # Zentrum
+            'webcam_1': np.array([3, 0, 0]),      # Rechts  
+            'webcam_2': np.array([1.5, 3, 0]),    # Oben
+            'youtube': np.array([0, 1.5, 2])      # YouTube Kamera
+        }
+    
+    def _clear_motion_objects(self, plotter):
+        """Entferne nur motion-relevante Objekte für Live-Updates"""
+        # Suche und entferne nur temporäre Tracking-Objekte
+        actors_to_remove = []
+        for actor in plotter.renderer.actors:
+            # Entferne orange/cyan Objekte (Motion rays + triangulated objects)
+            if hasattr(actor, 'GetProperty'):
+                prop = actor.GetProperty()
+                if hasattr(prop, 'GetColor'):
+                    color = prop.GetColor()
+                    # Orange (1.0, 0.5, 0.0) und Cyan (0.0, 1.0, 1.0) Objekte entfernen
+                    if (abs(color[0] - 1.0) < 0.1 and abs(color[1] - 0.5) < 0.1 and abs(color[2] - 0.0) < 0.1) or \
+                       (abs(color[0] - 0.0) < 0.1 and abs(color[1] - 1.0) < 0.1 and abs(color[2] - 1.0) < 0.1):
+                        actors_to_remove.append(actor)
+        
+        for actor in actors_to_remove:
+            plotter.renderer.RemoveActor(actor)
+    
+    def _draw_live_camera_rays(self, plotter):
+        """Zeichne Live-Sichtstrahlen von den Kameras"""
+        current_time = time.time()
+        ray_lifetime = 2.0  # 2 Sekunden sichtbar
+        
+        for camera_name, motion_list in self.camera_motion_data.items():
+            if camera_name in self.camera_positions and motion_list:
+                # Aktuelle Motion-Events
+                recent_motions = [
+                    motion for motion in motion_list
+                    if current_time - motion['timestamp'] < ray_lifetime
+                ]
+                
+                if recent_motions:
+                    camera_pos = self.camera_positions[camera_name]
+                    camera_color = self.camera_colors.get(camera_name, 'white')
+                    
+                    for motion in recent_motions[-3:]:  # Zeige letzte 3 Motions
+                        # Berechne 3D Richtung
+                        direction = self._pixel_to_3d_direction(motion['x'], motion['y'], camera_name)
+                        
+                        # Sichtstrahl mit Länge basierend auf Alter
+                        age = current_time - motion['timestamp']
+                        alpha = max(0.1, min(1.0, 1.0 - (age / ray_lifetime)))  # Sichere Opacity 0.1-1.0
+                        ray_length = 5.0  # 5 Meter Strahl
+                        
+                        ray_end = camera_pos + direction * ray_length
+                        
+                        # Erstelle Strahl-Linie mit Float-Koordinaten
+                        camera_pos_f = camera_pos.astype(np.float32)
+                        ray_end_f = ray_end.astype(np.float32)
+                        ray_line = pv.Line(camera_pos_f, ray_end_f)
+                        plotter.add_mesh(ray_line, color='orange', line_width=3, 
+                                       opacity=alpha, label=f'ray_{camera_name}')
+                        
+                        # Motion point am Ende des Strahls
+                        motion_point = pv.Sphere(radius=0.08, center=ray_end_f)
+                        plotter.add_mesh(motion_point, color=camera_color, opacity=alpha)
+    
+    def _calculate_live_triangulation(self, plotter):
+        """Live-Berechnung der Triangulation mit kontinuierlichen Updates"""
+        if len(self.camera_motion_data) < 2:
+            return
+            
+        current_time = time.time()
+        sync_window = 1.0  # 1 Sekunde Synchronisation
+        
+        # Sammle neueste synchrone Motion-Events
+        synchronized_motions = {}
+        
+        for camera_name, motion_list in self.camera_motion_data.items():
+            if camera_name in self.camera_positions and motion_list:
+                # Neueste Events in Zeitfenster
+                recent_motions = [
+                    motion for motion in motion_list
+                    if current_time - motion['timestamp'] < sync_window
+                ]
+                if recent_motions:
+                    synchronized_motions[camera_name] = recent_motions[-1]
+        
+        if len(synchronized_motions) < 2:
+            return
+            
+        # Berechne Triangulation für alle Kamera-Paare
+        triangulated_points = []
+        confidence_scores = []
+        
+        camera_names = list(synchronized_motions.keys())
+        for i in range(len(camera_names)):
+            for j in range(i + 1, len(camera_names)):
+                cam1_name = camera_names[i]
+                cam2_name = camera_names[j]
+                
+                motion1 = synchronized_motions[cam1_name]
+                motion2 = synchronized_motions[cam2_name]
+                
+                # Berechne 3D Strahlen
+                pos1 = self.camera_positions[cam1_name]
+                dir1 = self._pixel_to_3d_direction(motion1['x'], motion1['y'], cam1_name)
+                
+                pos2 = self.camera_positions[cam2_name]
+                dir2 = self._pixel_to_3d_direction(motion2['x'], motion2['y'], cam2_name)
+                
+                # Finde Kreuzungspunkt
+                intersection, confidence = self._line_intersection_3d_with_confidence(pos1, dir1, pos2, dir2)
+                if intersection is not None and confidence > 0.1:  # Mindest-Confidence
+                    triangulated_points.append(intersection)
+                    confidence_scores.append(confidence)
+                    
+                    # Zeige Triangulations-Punkt mit Confidence-basierter Größe
+                    point_size = 0.05 + confidence * 0.15
+                    intersection_f = intersection.astype(np.float32)
+                    point_mesh = pv.Sphere(radius=point_size, center=intersection_f)
+                    point_color = [1.0, 0.5, 0.0]  # Orange
+                    plotter.add_mesh(point_mesh, color=point_color, opacity=0.8)
+        
+        # Finale Objekt-Position mit gewichteter Mittelung
+        if triangulated_points:
+            # Gewichtete Mittelung basierend auf Confidence
+            total_weight = sum(confidence_scores)
+            if total_weight > 0:
+                weighted_position = np.zeros(3)
+                for point, confidence in zip(triangulated_points, confidence_scores):
+                    weighted_position += point * (confidence / total_weight)
+                
+                # Finale Live-Objekt-Position
+                object_size = 0.15 + min(len(triangulated_points) * 0.05, 0.25)  # Größer bei mehr Übereinstimmungen
+                final_object = pv.Sphere(radius=object_size, center=weighted_position)
+                plotter.add_mesh(final_object, color='cyan', opacity=1.0)
+                
+                # Live-Koordinaten mit Confidence
+                avg_confidence = np.mean(confidence_scores)
+                coord_text = (f"🎯 LIVE OBJEKT\n"
+                            f"X: {weighted_position[0]:.2f}m\n"
+                            f"Y: {weighted_position[1]:.2f}m\n"
+                            f"Z: {weighted_position[2]:.2f}m\n"
+                            f"Confidence: {avg_confidence:.2f}")
+                
+                plotter.add_point_labels([weighted_position], [coord_text], 
+                                       point_color='cyan', point_size=20, 
+                                       font_size=10, text_color='white')
+                
+                # Live-Statistiken
+                stats_text = (f"📊 LIVE TRIANGULATION\n"
+                            f"Kamera-Paare: {len(triangulated_points)}\n"
+                            f"Aktive Kameras: {len(synchronized_motions)}\n"
+                            f"Sync-Fenster: {sync_window:.1f}s")
+                plotter.add_text(stats_text, position='lower_right', font_size=9, color='cyan')
+    
+    def _line_intersection_3d_with_confidence(self, p1, d1, p2, d2):
+        """Finde Kreuzungspunkt mit Confidence-Score"""
+        w = p1 - p2
+        a = np.dot(d1, d1)
+        b = np.dot(d1, d2)
+        c = np.dot(d2, d2)
+        d = np.dot(d1, w)
+        e = np.dot(d2, w)
+        
+        denominator = a * c - b * b
+        if abs(denominator) < 1e-6:  # Parallel lines
+            return None, 0.0
+            
+        t1 = (b * e - c * d) / denominator
+        t2 = (a * e - b * d) / denominator
+        
+        # Berechne nächste Punkte auf beiden Linien
+        closest1 = p1 + t1 * d1
+        closest2 = p2 + t2 * d2
+        
+        # Mittelpunkt als Triangulation
+        intersection = (closest1 + closest2) / 2
+        
+        # Confidence basierend auf Abstand zwischen den nächsten Punkten
+        distance = np.linalg.norm(closest1 - closest2)
+        confidence = max(0.0, 1.0 - distance / 2.0)  # Confidence sinkt mit Abstand
+        
+        # Zusätzliche Confidence-Faktoren
+        # Winkel zwischen Strahlen (90° optimal)
+        cos_angle = abs(np.dot(d1, d2))
+        angle_confidence = 1.0 - cos_angle  # Besser wenn Strahlen senkrecht
+        
+        # Entfernung zu Kameras (nicht zu weit weg)
+        dist1 = np.linalg.norm(intersection - p1)
+        dist2 = np.linalg.norm(intersection - p2)
+        distance_confidence = 1.0 / (1.0 + (dist1 + dist2) / 10.0)  # Näher ist besser
+        
+        # Kombinierte Confidence
+        final_confidence = confidence * angle_confidence * distance_confidence
+        
+        return intersection, final_confidence
+                
+    def _create_camera_mesh(self, position):
+        """Erstelle eine Kamera-Pyramide"""
+        # Kleine Pyramide für Kamera
+        cone = pv.Cone(center=position, direction=(0, 1, 0), 
+                      height=0.3, radius=0.15, resolution=4)
+        return cone
+        
+    def _draw_camera_rays(self, plotter):
+        """Zeichne Sichtstrahlen von Kameras zu Motion-Punkten"""
+        if not self.camera_motion_data:
+            return
+            
+        # Aktuelle Zeit für zeitliche Synchronisation
+        current_time = time.time()
+        time_window = 2.0  # 2 Sekunden Fenster
+        
+        for camera_name, camera_pos in self.camera_positions.items():
+            if camera_name not in self.camera_motion_data:
+                continue
+                
+            camera_color = self.camera_colors.get(camera_name, 'white')
+            
+            # Filtere Motion-Daten nach Zeit
+            recent_motions = [
+                motion for motion in self.camera_motion_data[camera_name]
+                if current_time - motion['timestamp'] < time_window
+            ]
+            
+            # Zeichne Strahlen für jedes Motion-Event
+            for motion_data in recent_motions[-5:]:  # Nur die letzten 5
+                x, y = motion_data['x'], motion_data['y']
+                
+                # Konvertiere 2D Bildkoordinaten zu 3D Richtung
+                direction = self._pixel_to_3d_direction(x, y, camera_name)
+                
+                # Strahl-Endpunkt berechnen
+                ray_length = 4.0  # Meter
+                ray_end = camera_pos + direction * ray_length
+                
+                # Cast to float32 for PyVista
+                camera_pos_f = camera_pos.astype(np.float32)
+                ray_end_f = ray_end.astype(np.float32)
+                
+                # Strahl als Linie zeichnen
+                line = pv.Line(camera_pos_f, ray_end_f)
+                plotter.add_mesh(line, color=camera_color, line_width=3, opacity=0.7)
+                
+                # Motion-Punkt markieren
+                motion_point = pv.Sphere(radius=0.06, center=ray_end_f)
+                plotter.add_mesh(motion_point, color=camera_color, opacity=0.9)
+                    
+    def _pixel_to_3d_direction(self, pixel_x, pixel_y, camera_name):
+        """Konvertiere 2D Pixel-Koordinaten zu 3D Richtungsvektor"""
+        # Vereinfachte Kamera-Transformation
+        # In einer echten Implementierung würden hier Kamera-Intrinsics verwendet
+        
+        # Normalisiere Pixel-Koordinaten zu [-1, 1]
+        norm_x = (pixel_x - 320) / 320  # Annahme: 640x480 Auflösung
+        norm_y = (pixel_y - 240) / 240
+        
+        # Standard Field of View Annahme
+        fov_factor = 0.7
+        
+        # Basis-Richtung (je nach Kamera-Orientierung)
+        if camera_name == 'webcam_0':
+            direction = np.array([norm_x * fov_factor, 1.0, -norm_y * fov_factor])
+        elif camera_name == 'webcam_1':
+            direction = np.array([-1.0, norm_x * fov_factor, -norm_y * fov_factor])
+        elif camera_name == 'webcam_2':
+            direction = np.array([norm_x * fov_factor, -1.0, -norm_y * fov_factor])
+        else:
+            direction = np.array([norm_x * fov_factor, 1.0, -norm_y * fov_factor])
+            
+        # Normalisiere Richtungsvektor
+        return direction / np.linalg.norm(direction)
+        
+    def _calculate_triangulation(self, plotter):
+        """Berechne und visualisiere Triangulation von Kreuzungspunkten"""
+        if len(self.camera_motion_data) < 2:  # Brauchen mindestens 2 Kameras
+            return
+            
+        # Aktuelle Zeit für Synchronisation
+        current_time = time.time()
+        sync_window = 1.0  # 1 Sekunde Synchronisations-Fenster
+        
+        # Sammle synchrone Motion-Events von verschiedenen Kameras
+        synchronized_motions = {}
+        
+        for camera_name, motion_list in self.camera_motion_data.items():
+            if camera_name in self.camera_positions:
+                # Neueste Motion-Events in Zeitfenster
+                recent_motions = [
+                    motion for motion in motion_list
+                    if current_time - motion['timestamp'] < sync_window
+                ]
+                if recent_motions:
+                    synchronized_motions[camera_name] = recent_motions[-1]  # Neuestes Event
+        
+        if len(synchronized_motions) < 2:
+            return
+            
+        # Berechne Triangulation für alle Kamera-Paare
+        triangulated_points = []
+        camera_pairs = []
+        
+        camera_names = list(synchronized_motions.keys())
+        for i in range(len(camera_names)):
+            for j in range(i + 1, len(camera_names)):
+                cam1_name = camera_names[i]
+                cam2_name = camera_names[j]
+                
+                motion1 = synchronized_motions[cam1_name]
+                motion2 = synchronized_motions[cam2_name]
+                
+                # Berechne 3D Strahlen
+                pos1 = self.camera_positions[cam1_name]
+                dir1 = self._pixel_to_3d_direction(motion1['x'], motion1['y'], cam1_name)
+                
+                pos2 = self.camera_positions[cam2_name]
+                dir2 = self._pixel_to_3d_direction(motion2['x'], motion2['y'], cam2_name)
+                
+                # Finde Kreuzungspunkt
+                intersection = self._line_intersection_3d(pos1, dir1, pos2, dir2)
+                if intersection is not None:
+                    triangulated_points.append(intersection)
+                    camera_pairs.append((cam1_name, cam2_name))
+                    
+                    # Visualisiere Triangulations-Punkt
+                    point_mesh = pv.Sphere(radius=0.12, center=intersection)
+                    plotter.add_mesh(point_mesh, color='orange', opacity=0.9)
+                    
+                    # Verbindungslinien zwischen Kreuzungspunkten
+                    connection_line = pv.Line(pos1, intersection)
+                    plotter.add_mesh(connection_line, color='orange', line_width=1, opacity=0.4)
+                    connection_line2 = pv.Line(pos2, intersection)
+                    plotter.add_mesh(connection_line2, color='orange', line_width=1, opacity=0.4)
+        
+        # Berechne finale Objekt-Position als Durchschnitt aller Triangulationen
+        if triangulated_points:
+            avg_position = np.mean(triangulated_points, axis=0)
+            
+            # Finale Objekt-Position
+            final_object = pv.Sphere(radius=0.2, center=avg_position)
+            plotter.add_mesh(final_object, color='cyan', opacity=1.0)
+            
+            # Label mit Koordinaten
+            coord_text = f"🎯 OBJEKT\nX: {avg_position[0]:.2f}m\nY: {avg_position[1]:.2f}m\nZ: {avg_position[2]:.2f}m"
+            plotter.add_point_labels([avg_position], [coord_text], 
+                                   point_color='cyan', point_size=25, 
+                                   font_size=12, text_color='white')
+            
+            # Zeige Anzahl der verwendeten Kamera-Paare
+            stats_text = f"📊 Triangulation aus {len(triangulated_points)} Kamera-Paaren"
+            plotter.add_text(stats_text, position='lower_right', font_size=10, color='cyan')
+            
+    def _line_intersection_3d(self, p1, d1, p2, d2):
+        """Finde nächsten Punkt zwischen zwei 3D Linien"""
+        # Mathematische Lösung für nächsten Punkt zwischen zwei sich nicht schneidenden Linien
+        w = p1 - p2
+        a = np.dot(d1, d1)
+        b = np.dot(d1, d2)
+        c = np.dot(d2, d2)
+        d = np.dot(d1, w)
+        e = np.dot(d2, w)
+        
+        denominator = a * c - b * b
+        if abs(denominator) < 1e-6:  # Parallel lines
+            return None
+            
+        t1 = (b * e - c * d) / denominator
+        t2 = (a * e - b * d) / denominator
+        
+        point1 = p1 + t1 * d1
+        point2 = p2 + t2 * d2
+        
+        # Mittelpunkt zwischen den nächsten Punkten
+        return (point1 + point2) / 2
+
     def open_3d_viewer(self):
         """Open 3D motion visualization viewer"""
         if len(self.motion_data) < 10:
@@ -476,8 +1273,9 @@ class MasterMotionTracker:
                     sizes.append(max(1, area / 100))
                 
                 if points:
-                    # Create point cloud
-                    point_cloud = pv.PolyData(points)
+                    # Create point cloud with proper float32 type
+                    points_f = np.array(points, dtype=np.float32)
+                    point_cloud = pv.PolyData(points_f)
                     point_cloud['colors'] = colors
                     point_cloud['sizes'] = sizes
                     
@@ -661,6 +1459,11 @@ class MasterMotionTracker:
         
         # Set stop flag first
         self.is_tracking = False
+        
+        # Stop Live Triangulation
+        if hasattr(self, 'triangulation_active'):
+            self.triangulation_active = False
+            self.log("📐 Stoppe Live Triangulation...")
         
         # Update GUI immediately to show stopping state
         try:
@@ -1021,11 +1824,22 @@ class MasterMotionTracker:
                 cv2.putText(result_frame, f'M{motion_count}', 
                            (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
                            
-                # Store motion data for 3D visualization
+                # Motion point für 3D viewer
                 center_x = x + w // 2
                 center_y = y + h // 2
                 timestamp = time.time()
                 self.motion_data.append((center_x, center_y, area, timestamp))
+                
+                # Kamera-spezifische Daten für Triangulation
+                if stream_name not in self.camera_motion_data:
+                    self.camera_motion_data[stream_name] = deque(maxlen=100)
+                self.camera_motion_data[stream_name].append({
+                    'x': center_x,
+                    'y': center_y, 
+                    'area': area,
+                    'timestamp': timestamp,
+                    'camera': stream_name
+                })
                            
         # Add stream info
         timestamp_str = datetime.now().strftime("%H:%M:%S")
