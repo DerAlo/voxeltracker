@@ -1,6 +1,30 @@
 # 🎯 Pixeltovoxelprojector - Motion Tracking System
 
-> **TL;DR:** Hochpräzises Motion-Tracking System das Pixel-Bewegungen zu 3D-Voxeln projiziert. **Speziell optimiert für Mücken-Tracking** mit normalen Webcams! 🦟✅
+> **TL;DR:** Hochpräzises Motion-Tracking System das Pixel-Bewegungen zu 3D-Voxeln projiziert. **Speziell optimiert **Das System ist vollständig getestet und einsatzbereit - jetzt mit einheitlichem Master-Tool!**
+
+### 🎯 Master Motion Tracker verwenden:
+1. 🚀 **Starten Sie** `python master_motion_tracker.py`
+2. 🎯 **Wählen Sie** Detection-Profil (Mosquito/Bird/Aircraft/Custom)
+3. 📺 **Wählen Sie** Video-Quelle (Webcam/Niagara Falls/Custom URL)
+4. 🔍 **Klicken Sie** "Test Source" um die Quelle zu prüfen
+5. 🎬 **Klicken Sie** "Start Tracking" für Live-Detection
+6. ⚙️ **Nutzen Sie** "Advanced Settings" für manuelle Anpassung
+
+### 🦟 Legacy Mosquito-Tests (optional):
+1. 🚀 **Starten Sie** `mosquito_tracking/live_mosquito_tracker.py`
+2. 🎯 **Positionieren Sie** eine Mücke vor der Kamera
+3. 📹 **Schauen Sie zu** wie das System sie erkennt!
+
+### 💡 Master Tool Highlights:
+- ✅ **Alle Profile**: Mosquito 🦟, Bird 🐦, Aircraft ✈️, Custom 🎯
+- ✅ **Alle Quellen**: Webcam 📷, YouTube Live-Streams �, Custom URLs 📺
+- ✅ **Einheitliche GUI**: Alles in einem Tool
+- ✅ **Live Settings**: Anpassbare Parameter während der Laufzeit
+- ✅ **Auto-Screenshot**: 's' Taste für Beweise speichern
+- ✅ **Safe Stop**: Kein Absturz beim Stoppenield-Testing mit YouTube Live-Streams:
+1. 🚀 **Starten Sie** `investigation/niagara_motion_demo.py` für GUI-Demo mit Buttons
+2. 🎯 **Testen Sie** `investigation/overlapping_webcam_investigation.py` für überlappende Perspektiven  
+3. 🔬 **Experimentieren Sie** mit den anderen investigation Toolscking** mit normalen Webcams! 🦟✅
 
 ## 🚀 Was macht das System?
 
@@ -25,48 +49,45 @@ Dieses System erkennt und verfolgt **kleinste Bewegungen** (sogar 1-3 Pixel gro�
 └── 📄 README.md            # Diese Datei
 ```
 
-## ⚡ Quick Start - Mücken-Tracking
+## ⚡ Quick Start - Master Motion Tracker
 
-**Sofort loslegen mit Mücken-Tracking:**
+**Einheitliches System für alle Motion-Tracking-Modi:**
 
 ```bash
-# 1. In Mosquito-Tracking Ordner wechseln
-cd mosquito_tracking
-
-# 2. Live-Tracking starten (mit Ihrer Webcam!)
-python live_mosquito_tracker.py
-
-# 3. Testdaten erstellen und validieren
-python create_mosquito_test_data.py
-python mosquito_test_validator.py
+# Starten Sie das Master-Tool (alle Profile & Quellen in einem!)
+python master_motion_tracker.py
 ```
 
-**Fertig!** Das System ist ready für echte Mücken! 🎉
+**Features:**
+- 🦟 **Mücken-Profil** + lokale Webcam
+- 🐦 **Vogel-Profil** + lokale Webcam  
+- ✈️ **Flugzeug-Profil** + lokale Webcam
+- 🌊 **Niagara Falls Demo** + YouTube Live-Streams
+- 📺 **Custom URLs** für eigene Quellen
+- ⚙️ **Advanced Settings** für manuelle Anpassung
 
-## 🛠️ Alle Tools im Überblick
+**Fertig!** Alle Modi in einem Tool! 🎉
 
-### 🦟 Mosquito-Tracking (Hauptfeature)
+## 🛠️ Tools Übersicht
+
+### 🎯 Master Tool (EMPFOHLEN)
 | Tool | Beschreibung |
 |------|-------------|
-| `live_mosquito_tracker.py` | **Live-Webcam Mücken-Tracking** - Echtzeit-Erkennung |
-| `create_mosquito_test_data.py` | Erstellt realistische Test-Mücken |
-| `mosquito_test_validator.py` | Validiert System-Performance |
-| `create_final_report.py` | Generiert HTML-Berichte & Videos |
+| `master_motion_tracker.py` | **🎯 Master Motion Tracker - Alle Profile & Quellen in einem GUI** |
 
-### 🔧 Allgemeine Tools
+### 🦟 Mosquito-Tracking (Legacy - für spezielle Tests)
 | Tool | Beschreibung |
 |------|-------------|
-| `multi_webcam_tracker.py` | Multi-Kamera Setup |
-| `webcam_motion_tracker.py` | Standard Motion-Tracker |
-| `voxelmotionviewer.py` | 3D-Voxel Visualisierer |
-| `spacevoxelviewer.py` | 3D-Raum Viewer |
-| `launcher.py` | GUI-Launcher für alle Tools |
+| `mosquito_tracking/live_mosquito_tracker.py` | Legacy Mücken-Tracker |
+| `mosquito_tracking/create_mosquito_test_data.py` | Test-Daten Generator |
+| `mosquito_tracking/mosquito_test_validator.py` | System Validator |
 
-### 🧪 Test & Validierung
+### � Legacy Tools (Backup)
 | Tool | Beschreibung |
 |------|-------------|
-| `create_test_data.py` | Allgemeine Test-Daten |
-| `test_setup.py` | System-Setup Validierung |
+| `tools/webcam_motion_tracker.py` | Alter Multi-Webcam Tracker |
+| `tools/multi_webcam_tracker.py` | Legacy Multi-Kamera Tool |
+| `tools/spacevoxelviewer.py` | 3D-Voxel Visualisierer |
 
 ## 🎯 Detection-Profile
 
@@ -171,14 +192,26 @@ Das System erstellt automatisch:
 
 **Das System ist vollständig getestet und einsatzbereit für Mücken-Tracking mit normalen Webcams!**
 
-### Nächste Schritte:
+### 🌍 Field-Testing mit öffentlichen Webcams:
+1. 🚀 **Starten Sie** `investigation/simple_webcam_test.py` für einfache Tests
+2. 🎯 **Testen Sie** `investigation/overlapping_webcam_investigation.py` für überlappende Perspektiven  
+3. � **Experimentieren Sie** mit den anderen investigation Tools
+
+### 🦟 Lokale Mücken-Tests:
 1. 🚀 **Starten Sie** `mosquito_tracking/live_mosquito_tracker.py`
 2. 🎯 **Positionieren Sie** eine Mücke vor der Kamera
 3. 📹 **Schauen Sie zu** wie das System sie erkennt!
+
+### 💡 Field-Test Highlights (YouTube Live-Streams):
+- ✅ **Niagara Falls GUI Demo**: Button-Interface für einfache Bedienung
+- ✅ **Dual-Perspektiven**: NiagaraFallsLive + EarthCam Side-by-Side
+- ✅ **Live Motion Detection**: Echtzeit-Tracking mit OpenCV
+- ✅ **Settings**: Anpassbare Motion-Parameter über GUI
+- ✅ **Auto-Screenshot**: 's' Taste für Beweise speichern
 
 ---
 
 **🔬 System:** Pixeltovoxelprojector v2.0  
 **📅 Letztes Update:** 21.07.2025  
-**🏆 Status:** ✅ Produktionsreif für Mücken-Tracking  
-**💻 Entwickelt für:** Windows + Standard Webcams
+**🏆 Status:** ✅ Master Motion Tracker verfügbar - Alle Modi in einem Tool!  
+**💻 Entwickelt für:** Windows + Standard Webcams + YouTube Live-Streams
