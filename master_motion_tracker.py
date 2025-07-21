@@ -213,28 +213,36 @@ class MasterMotionTracker:
         self.settings_frame = ttk.LabelFrame(self.root, text="🔧 Advanced Settings")
         
         # Threshold
-        ttk.Label(self.settings_frame, text="Motion Threshold:").grid(row=0, column=0, sticky=tk.W, padx=5)
+        ttk.Label(self.settings_frame, text="🎯 Motion Threshold (Sensitivity):").grid(row=0, column=0, sticky=tk.W, padx=5)
         self.threshold_var = tk.IntVar(value=25)
         threshold_scale = ttk.Scale(self.settings_frame, from_=5, to=100, 
-                                   variable=self.threshold_var, orient=tk.HORIZONTAL)
+                                   variable=self.threshold_var, orient=tk.HORIZONTAL, length=200)
         threshold_scale.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=5)
-        ttk.Label(self.settings_frame, textvariable=self.threshold_var).grid(row=0, column=2, padx=5)
+        threshold_label = ttk.Label(self.settings_frame, textvariable=self.threshold_var)
+        threshold_label.grid(row=0, column=2, padx=5)
         
         # Min area
-        ttk.Label(self.settings_frame, text="Min Object Size:").grid(row=1, column=0, sticky=tk.W, padx=5)
+        ttk.Label(self.settings_frame, text="📏 Min Object Size (pixels):").grid(row=1, column=0, sticky=tk.W, padx=5)
         self.min_area_var = tk.IntVar(value=100)
         min_area_scale = ttk.Scale(self.settings_frame, from_=1, to=1000, 
-                                  variable=self.min_area_var, orient=tk.HORIZONTAL)
+                                  variable=self.min_area_var, orient=tk.HORIZONTAL, length=200)
         min_area_scale.grid(row=1, column=1, sticky=(tk.W, tk.E), padx=5)
-        ttk.Label(self.settings_frame, textvariable=self.min_area_var).grid(row=1, column=2, padx=5)
+        min_area_label = ttk.Label(self.settings_frame, textvariable=self.min_area_var)
+        min_area_label.grid(row=1, column=2, padx=5)
         
         # Max area
-        ttk.Label(self.settings_frame, text="Max Object Size:").grid(row=2, column=0, sticky=tk.W, padx=5)
+        ttk.Label(self.settings_frame, text="📐 Max Object Size (pixels):").grid(row=2, column=0, sticky=tk.W, padx=5)
         self.max_area_var = tk.IntVar(value=10000)
         max_area_scale = ttk.Scale(self.settings_frame, from_=100, to=50000, 
-                                  variable=self.max_area_var, orient=tk.HORIZONTAL)
+                                  variable=self.max_area_var, orient=tk.HORIZONTAL, length=200)
         max_area_scale.grid(row=2, column=1, sticky=(tk.W, tk.E), padx=5)
-        ttk.Label(self.settings_frame, textvariable=self.max_area_var).grid(row=2, column=2, padx=5)
+        max_area_label = ttk.Label(self.settings_frame, textvariable=self.max_area_var)
+        max_area_label.grid(row=2, column=2, padx=5)
+        
+        # Help text
+        help_text = "💡 Tipp: Niedrigere Threshold = höhere Sensitivität. Größere Min Area = weniger Rauschen."
+        ttk.Label(self.settings_frame, text=help_text, font=("Arial", 8), foreground="gray").grid(
+            row=3, column=0, columnspan=3, sticky=tk.W, padx=5, pady=(5,0))
         
         self.settings_frame.columnconfigure(1, weight=1)
         
@@ -504,10 +512,29 @@ class MasterMotionTracker:
             self.settings_frame.pack_forget()
             self.settings_btn.config(text="⚙️ Advanced Settings")
             self.settings_visible = False
+            self.log("🔼 Advanced Settings versteckt")
         else:
-            self.settings_frame.pack(pady=5, padx=10, fill=tk.X, before=self.root.children['!labelframe3'])
+            # Pack the settings frame after the configuration frame
+            self.settings_frame.pack(pady=5, padx=10, fill=tk.X, after=self.root.winfo_children()[1])
             self.settings_btn.config(text="🔼 Hide Settings")
             self.settings_visible = True
+            self.log("⚙️ Advanced Settings angezeigt")
+            
+            # Update settings from current profile
+            self.update_settings_from_profile()
+            
+    def update_settings_from_profile(self):
+        """Update advanced settings based on selected profile"""
+        try:
+            profile_name = self.profile_var.get()
+            if profile_name in DETECTION_PROFILES:
+                profile = DETECTION_PROFILES[profile_name]
+                self.threshold_var.set(profile.get('threshold', 25))
+                self.min_area_var.set(profile.get('min_area', 100))  
+                self.max_area_var.set(profile.get('max_area', 10000))
+                self.log(f"⚙️ Settings updated for {profile_name}")
+        except Exception as e:
+            self.log(f"⚠️ Settings update error: {str(e)}")
             
     def test_source(self):
         """Test the selected video source"""
