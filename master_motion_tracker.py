@@ -194,6 +194,40 @@ class MasterMotionTracker:
         self.url_entry = ttk.Entry(self.url_frame, textvariable=self.url_var, width=50)
         self.url_entry.pack(side=tk.LEFT, padx=5)
         
+        # Webcam selection frame (initially hidden)
+        self.webcam_frame = ttk.LabelFrame(config_frame, text="📷 Webcam Auswahl")
+        ttk.Label(self.webcam_frame, text="Wählen Sie die gewünschten Webcams aus:").pack(pady=5)
+        
+        # Webcam checkboxes
+        self.webcam_vars = {}
+        webcam_check_frame = ttk.Frame(self.webcam_frame)
+        webcam_check_frame.pack(pady=5)
+        
+        for i in range(4):  # Bis zu 4 Webcams unterstützen
+            var = tk.BooleanVar()
+            # Standard: Nur Webcam 0 und 1 aktiviert (die beiden physischen)
+            if i < 2:
+                var.set(True)
+            else:
+                var.set(False)
+            
+            self.webcam_vars[f'webcam_{i}'] = var
+            checkbox = ttk.Checkbutton(
+                webcam_check_frame, 
+                text=f"Webcam {i} ({'Physisch' if i < 2 else 'Virtual/OBS' if i == 2 else 'Extra'})",
+                variable=var
+            )
+            checkbox.pack(side=tk.LEFT, padx=10)
+        
+        # Help text
+        help_label = ttk.Label(
+            self.webcam_frame, 
+            text="💡 Tipp: Deaktivieren Sie virtuelle Kameras (OBS etc.) für bessere Triangulation",
+            font=("Arial", 8), 
+            foreground="gray"
+        )
+        help_label.pack(pady=(0,5))
+        
         config_frame.columnconfigure(1, weight=1)
         
         # Profile info
@@ -330,8 +364,14 @@ class MasterMotionTracker:
         # Show/hide URL entry for custom URL
         if source['type'] == 'custom_url':
             self.url_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), padx=5, pady=5)
+            self.webcam_frame.grid_remove()
+        # Show webcam selection for multi-webcam
+        elif source['type'] == 'multi_webcam':
+            self.url_frame.grid_remove()
+            self.webcam_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E), padx=5, pady=5)
         else:
             self.url_frame.grid_remove()
+            self.webcam_frame.grid_remove()
             
         self.log(f"📺 Quelle gewechselt zu: {source_name} - {source['description']}")
         
@@ -568,21 +608,23 @@ class MasterMotionTracker:
                     self.triangulation_active = False
                     return
             
-            # Standard Kamera-Positionen (editierbar durch User)
-            self.camera_positions = {
-                'webcam_0': np.array([0, 0, 0]),      # Zentrum
-                'webcam_1': np.array([3, 0, 0]),      # Rechts  
-                'webcam_2': np.array([1.5, 3, 0]),    # Oben
-                'youtube': np.array([0, 1.5, 2])      # YouTube Kamera
-            }
+            # Standard Kamera-Positionen (dynamisch basierend auf ausgewählten Webcams)
+            if not hasattr(self, 'camera_positions'):
+                # Fallback falls keine Positionen gesetzt wurden
+                self.camera_positions = {
+                    'webcam_0': np.array([-1, 0, 0]),     # Links (1m von Zentrum)
+                    'webcam_1': np.array([1, 0, 0]),      # Rechts (1m von Zentrum)
+                    'webcam_2': np.array([0, 0, 0])       # Zentrum (falls vorhanden)
+                }
             
-            # Farben für verschiedene Kameras
-            self.camera_colors = {
-                'webcam_0': 'red',
-                'webcam_1': 'green', 
-                'webcam_2': 'blue',
-                'youtube': 'yellow'
-            }
+            # Farben für verschiedene Kameras (dynamisch basierend auf ausgewählten Webcams)
+            if not hasattr(self, 'camera_colors'):
+                # Fallback falls keine Farben gesetzt wurden
+                self.camera_colors = {
+                    'webcam_0': 'red',     # Links = Rot
+                    'webcam_1': 'green',   # Rechts = Grün
+                    'webcam_2': 'blue'     # Zentrum = Blau (falls vorhanden)
+                }
             
             # Setup 3D Scene einmalig
             self._setup_3d_scene(plotter)
@@ -592,11 +634,14 @@ class MasterMotionTracker:
             
             # Steuerungstext
             plotter.add_text("🎯 LIVE 3D TRIANGULATION\n\n"
-                            "📷 Kamera-Positionen:\n"
-                            "• Webcam 0: ROT (Zentrum)\n"
-                            "• Webcam 1: GRÜN (Rechts)\n" 
-                            "• Webcam 2: BLAU (Oben)\n"
-                            "• YouTube: GELB (Erhöht)\n\n"
+                            "📷 Kamera-Positionen (realistisch):\n"
+                            "• Webcam 0: ROT (Links, -1m)\n"
+                            "• Webcam 1: GRÜN (Rechts, +1m)\n" 
+                            "• Webcam 2: BLAU (Zentrum)\n\n"
+                            "🔄 Physische Anordnung:\n"
+                            "• Nebeneinander auf gleicher Höhe\n"
+                            "• 30° Rotation zueinander\n"
+                            "• Überlappende Sichtfelder\n\n"
                             "🦟 LIVE TRACKING:\n"
                             "• Orange Strahlen: Motion Detection\n"
                             "• Cyan Kugel: Trianguliertes Objekt\n"
@@ -708,7 +753,7 @@ class MasterMotionTracker:
         
         # Zeichne Kameras mit Sichtfeldern
         for camera_name, position in self.camera_positions.items():
-            if camera_name in self.caps or camera_name in ['youtube']:  # Nur aktive Kameras
+            if camera_name in self.caps:  # Nur aktive Kameras
                 # Kamera als Pyramide darstellen
                 camera_mesh = self._create_camera_mesh(position)
                 color = self.camera_colors.get(camera_name, 'white')
@@ -724,19 +769,20 @@ class MasterMotionTracker:
     
     def _add_camera_fov(self, plotter, camera_name, position, color):
         """Füge Sichtfeld-Visualisierung für Kamera hinzu"""
-        # Field of View Kegel (45° Öffnungswinkel)
-        fov_angle = 45  # Grad
+        # Field of View Kegel (60° Öffnungswinkel, normal für Webcams)
+        fov_angle = 60  # Grad - typischer Webcam-FOV
         fov_distance = 3.0  # 3 Meter Sichtweite
         
-        # Berechne Kegel-Richtung basierend auf Kamera-Orientierung
+        # Berechne Kegel-Richtung basierend auf physische Anordnung
+        # Beide Kameras schauen nach vorne, aber um 30° zueinander rotiert
         if camera_name == 'webcam_0':
-            direction = np.array([0, 1, 0])  # Zentrum schaut nach vorne
+            direction = np.array([0.5, 0.866, 0])  # 30° nach rechts (von links kommend)
         elif camera_name == 'webcam_1':
-            direction = np.array([-1, 0, 0])  # Rechts schaut nach links
+            direction = np.array([-0.5, 0.866, 0])  # 30° nach links (von rechts kommend)
         elif camera_name == 'webcam_2':
-            direction = np.array([0, -1, 0])  # Oben schaut nach unten
+            direction = np.array([0, 1, 0])  # Zentral nach vorne (falls vorhanden)
         else:
-            direction = np.array([0, 0, -1])  # YouTube schaut nach unten
+            direction = np.array([0, 1, 0])  # Default nach vorne
         
         # Erstelle Sichtfeld-Kegel
         cone_center = position + direction * (fov_distance / 2)
@@ -753,12 +799,12 @@ class MasterMotionTracker:
         control_text = ("📍 KAMERA-POSITIONIERUNG:\n"
                        "• Drag & Drop Kameras in 3D\n"
                        "• Rechtsklick: Kamera-Menü\n"
-                       "• Optimal für Triangulation:\n"
-                       "  - 90° Winkel zwischen Kameras\n"
-                       "  - 2-4 Meter Abstand\n"
+                       "• Realistische Anordnung:\n"
+                       "  - Nebeneinander auf gleicher Höhe\n"
+                       "  - 30° Rotation zueinander\n"
                        "  - Überlappende Sichtfelder\n\n"
                        "🎮 LIVE CONTROLS:\n"
-                       "• 1-4: Kamera auswählen & bewegen\n"
+                       "• 1-3: Kamera auswählen & bewegen\n"
                        "• X/Y/Z: Achse sperren\n"
                        "• R: Reset Positionen")
         
@@ -779,11 +825,6 @@ class MasterMotionTracker:
             """Kamera 3 auswählen"""
             self.selected_camera = 'webcam_2'
             self.log("📷 Kamera ausgewählt: webcam_2")
-            
-        def on_key_4():
-            """Kamera 4 auswählen"""
-            self.selected_camera = 'youtube'
-            self.log("📷 Kamera ausgewählt: youtube")
             
         def on_key_r():
             """Reset Kamera-Positionen"""
@@ -848,7 +889,6 @@ class MasterMotionTracker:
         plotter.add_key_event('1', on_key_1)
         plotter.add_key_event('2', on_key_2)
         plotter.add_key_event('3', on_key_3)
-        plotter.add_key_event('4', on_key_4)
         plotter.add_key_event('w', on_key_w)
         plotter.add_key_event('s', on_key_s)
         plotter.add_key_event('a', on_key_a)
@@ -858,12 +898,12 @@ class MasterMotionTracker:
         plotter.add_key_event('r', on_key_r)
     
     def _reset_camera_positions(self):
-        """Reset Kamera-Positionen zu Standard-Werten"""
+        """Reset Kamera-Positionen zu Standard-Werten - nebeneinander auf gleicher Höhe, 30° gedreht"""
+        # Webcams nebeneinander auf gleicher Höhe, nur rotiert um 30° für überlappende Sichtfelder
         self.camera_positions = {
-            'webcam_0': np.array([0, 0, 0]),      # Zentrum
-            'webcam_1': np.array([3, 0, 0]),      # Rechts  
-            'webcam_2': np.array([1.5, 3, 0]),    # Oben
-            'youtube': np.array([0, 1.5, 2])      # YouTube Kamera
+            'webcam_0': np.array([-1, 0, 0]),     # Links (1m von Zentrum)
+            'webcam_1': np.array([1, 0, 0]),      # Rechts (1m von Zentrum)
+            'webcam_2': np.array([0, 0, 0])       # Zentrum (falls 3. Kamera vorhanden)
         }
     
     def _clear_motion_objects(self, plotter):
@@ -1107,7 +1147,7 @@ class MasterMotionTracker:
                 plotter.add_mesh(motion_point, color=camera_color, opacity=0.9)
                     
     def _pixel_to_3d_direction(self, pixel_x, pixel_y, camera_name):
-        """Konvertiere 2D Pixel-Koordinaten zu 3D Richtungsvektor"""
+        """Konvertiere 2D Pixel-Koordinaten zu 3D Richtungsvektor - realistische 30° Rotation"""
         # Vereinfachte Kamera-Transformation
         # In einer echten Implementierung würden hier Kamera-Intrinsics verwendet
         
@@ -1115,18 +1155,33 @@ class MasterMotionTracker:
         norm_x = (pixel_x - 320) / 320  # Annahme: 640x480 Auflösung
         norm_y = (pixel_y - 240) / 240
         
-        # Standard Field of View Annahme
-        fov_factor = 0.7
+        # Standard Field of View Annahme (60° typisch für Webcams)
+        fov_factor = 0.7  # Für 60° FOV
         
-        # Basis-Richtung (je nach Kamera-Orientierung)
+        # Basis-Richtung für jede Kamera (physisch nebeneinander, nur gedreht)
         if camera_name == 'webcam_0':
-            direction = np.array([norm_x * fov_factor, 1.0, -norm_y * fov_factor])
+            # Links: 30° nach rechts gedreht (schauen sich zu)
+            base_dir = np.array([0.5, 0.866, 0])  # 30° Rotation
+            right_vec = np.array([0.866, -0.5, 0])  # Rechts-Vektor für diese Rotation
+            up_vec = np.array([0, 0, 1])  # Z ist immer oben
         elif camera_name == 'webcam_1':
-            direction = np.array([-1.0, norm_x * fov_factor, -norm_y * fov_factor])
+            # Rechts: 30° nach links gedreht (schauen sich zu)
+            base_dir = np.array([-0.5, 0.866, 0])  # -30° Rotation
+            right_vec = np.array([0.866, 0.5, 0])  # Rechts-Vektor für diese Rotation
+            up_vec = np.array([0, 0, 1])  # Z ist immer oben
         elif camera_name == 'webcam_2':
-            direction = np.array([norm_x * fov_factor, -1.0, -norm_y * fov_factor])
+            # Zentrum: gerade nach vorne
+            base_dir = np.array([0, 1, 0])
+            right_vec = np.array([1, 0, 0])
+            up_vec = np.array([0, 0, 1])
         else:
-            direction = np.array([norm_x * fov_factor, 1.0, -norm_y * fov_factor])
+            # Default: gerade nach vorne
+            base_dir = np.array([0, 1, 0])
+            right_vec = np.array([1, 0, 0])
+            up_vec = np.array([0, 0, 1])
+        
+        # Kombiniere Basis-Richtung mit Pixel-Offset
+        direction = base_dir + (right_vec * norm_x * fov_factor) + (up_vec * norm_y * fov_factor)
             
         # Normalisiere Richtungsvektor
         return direction / np.linalg.norm(direction)
@@ -1593,9 +1648,16 @@ class MasterMotionTracker:
                 
         elif source['type'] == 'multi_webcam':
             success_count = 0
-            total_sources = source['sources']
+            # Verwende nur ausgewählte Webcams
+            selected_webcams = [i for i in range(4) if self.webcam_vars[f'webcam_{i}'].get()]
             
-            for webcam_idx in total_sources:
+            if not selected_webcams:
+                self.log("❌ Keine Webcams ausgewählt!")
+                return False
+                
+            self.log(f"🎯 Verwende ausgewählte Webcams: {selected_webcams}")
+            
+            for webcam_idx in selected_webcams:
                 try:
                     cap = cv2.VideoCapture(webcam_idx)
                     if cap.isOpened():
@@ -1616,10 +1678,12 @@ class MasterMotionTracker:
                     self.log(f"❌ Webcam {webcam_idx} Fehler: {str(e)}")
                     
             if success_count > 0:
-                self.log(f"✅ Multi-Webcam: {success_count}/{len(total_sources)} Kameras aktiv")
+                self.log(f"✅ Multi-Webcam: {success_count}/{len(selected_webcams)} Kameras aktiv")
+                # Update Kamera-Positionen basierend auf aktiven Webcams
+                self._update_camera_positions_for_active_webcams(selected_webcams)
                 return True
             else:
-                self.log("❌ Keine Webcams konnten initialisiert werden")
+                self.log("❌ Keine ausgewählten Webcams konnten initialisiert werden")
                 return False
                 
         elif source['type'] == 'youtube_single':
@@ -1636,6 +1700,53 @@ class MasterMotionTracker:
             return self._init_custom_url(url)
             
         return False
+                
+    def _update_camera_positions_for_active_webcams(self, active_webcams):
+        """Update Kamera-Positionen basierend auf aktive Webcams"""
+        # Nur für aktive Webcams Positionen setzen
+        self.camera_positions = {}
+        self.camera_colors = {}
+        
+        if len(active_webcams) == 1:
+            # Eine Kamera - zentral
+            webcam_name = f"webcam_{active_webcams[0]}"
+            self.camera_positions[webcam_name] = np.array([0, 0, 0])
+            self.camera_colors[webcam_name] = 'red'
+            
+        elif len(active_webcams) == 2:
+            # Zwei Kameras - nebeneinander mit 30° Rotation (optimal)
+            webcam_0 = f"webcam_{active_webcams[0]}"
+            webcam_1 = f"webcam_{active_webcams[1]}"
+            
+            self.camera_positions[webcam_0] = np.array([-1, 0, 0])  # Links
+            self.camera_positions[webcam_1] = np.array([1, 0, 0])   # Rechts
+            
+            self.camera_colors[webcam_0] = 'red'
+            self.camera_colors[webcam_1] = 'green'
+            
+        else:
+            # Drei oder mehr Kameras - erweiterte Anordnung
+            colors = ['red', 'green', 'blue', 'yellow']
+            for i, webcam_idx in enumerate(active_webcams):
+                webcam_name = f"webcam_{webcam_idx}"
+                
+                if i == 0:
+                    self.camera_positions[webcam_name] = np.array([-1, 0, 0])  # Links
+                elif i == 1:
+                    self.camera_positions[webcam_name] = np.array([1, 0, 0])   # Rechts
+                elif i == 2:
+                    self.camera_positions[webcam_name] = np.array([0, 0, 0])   # Zentrum
+                else:
+                    # Weitere Kameras in einem Kreis anordnen
+                    angle = (i - 2) * (2 * np.pi / max(1, len(active_webcams) - 2))
+                    radius = 1.5
+                    x = radius * np.cos(angle)
+                    y = radius * np.sin(angle)
+                    self.camera_positions[webcam_name] = np.array([x, y, 0])
+                
+                self.camera_colors[webcam_name] = colors[min(i, len(colors) - 1)]
+        
+        self.log(f"📍 Kamera-Positionen aktualisiert für {len(active_webcams)} aktive Webcams")
         
     def _init_youtube_single(self, youtube_url):
         """Initialize single YouTube stream"""
