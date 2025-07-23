@@ -196,26 +196,24 @@ class Stable3DTriangulation:
                 # Kamera-Orientierungspfeil
                 self._draw_camera_orientation(position, color)
         
-        # Verbesserte Info-Box mit mehr Details
-        info_text = ("📍 SYNC-FILTER AKTIV:\\n"
-                    "• Nur zeitgleiche Bewegungen (±300ms)\\n" 
-                    "• Beide Kameras müssen Motion erkennen\\n"
-                    "• Himmel-Tracking: 100m Strahlen\\n\\n"
+        # Verbesserte Info-Box mit Anti-Stationary Filter
+        info_text = ("📍 ANTI-STATIONARY FILTER AKTIV:\\n"
+                    "• 🚫 Mindest-Bewegung: Objekt muss sich signifikant bewegen\\n"
+                    "• ⏱️ Zeitfenster: Bewegung muss im Zeitrahmen stattfinden\\n"
+                    "• 🎯 Filtert: Wolken-Kanten, statische Äste, langsame Störungen\\n"
+                    "• ✅ Erhält: Schnelle Vögel mit echter Bewegungsdynamik\\n\\n"
                     "🎮 STEUERUNG:\\n"
                     "• Maus-Drag: 3D-Rotation\\n"
                     "• Mausrad: Zoom In/Out\\n"
                     "• Strg+Mausrad: Schneller Zoom\\n"
-                    "• Tasten +/-: Zoom, 0: Reset\\n"
-                    "• Rechts-Drag: Pan-Bewegung\\n\\n"
+                    "• Tasten +/-: Zoom, 0: Reset\\n\\n"
                     "📷 WEBCAM-SETUP:\\n"
                     "• ROT: Linke Kamera (5cm links)\\n"
                     "• GRÜN: Rechte Kamera (5cm rechts)\\n"
-                    "• Weiße Pfeile: Orientierung\\n"
-                    "• Kegel: Sichtfeld (60° FOV)\\n\\n"
-                    "⚠️ STABIL-MODUS:\\n"
-                    "• matplotlib statt PyVista\\n"
-                    "• Timer-basierte Updates\\n"
-                    "• Crash-sicher!")
+                    "• Marker-Größe = Konfidenz\\n\\n"
+                    "⚙️ FILTER ANPASSEN:\\n"
+                    "Siehe 'Advanced Settings' im Hauptfenster\\n"
+                    "für Feintuning des Anti-Stationary Filters")
                     
         self.ax.text2D(0.02, 0.98, info_text, transform=self.ax.transAxes,
                       fontsize=8, color='yellow', verticalalignment='top',
@@ -301,7 +299,7 @@ class Stable3DTriangulation:
             print(f"⚠️ Update-Fehler (ignoriert): {str(e)[:50]}...")
             
     def _filter_synchronized_motions(self):
-        """Filtere nur zeitgleiche Bewegungen - identisch zur PyVista-Version"""
+        """Filtere nur zeitgleiche Bewegungen + Anti-Stationary Filter gegen Wolken/Äste"""
         try:
             if not hasattr(self.master_tracker, 'camera_motion_data') or \
                len(self.master_tracker.camera_motion_data) < 2:
@@ -310,29 +308,61 @@ class Stable3DTriangulation:
             current_time = time.time()
             sync_tolerance = 0.3  # 300ms Toleranz
             
-            # Sammle aktuelle Motion-Events
-            recent_motions = {}
+            # Anti-Stationary Filter Parameter
+            min_movement_distance = getattr(self.master_tracker, 'min_movement_var', None)
+            movement_time_window = getattr(self.master_tracker, 'movement_window_var', None)
+            
+            min_distance = min_movement_distance.get() if min_movement_distance else 15  # Mindest-Bewegung in Pixeln
+            time_window = movement_time_window.get() if movement_time_window else 1.0   # Zeitfenster in Sekunden
+            
+            # Sammle gefilterte Motion-Events
+            filtered_motions = {}
             for camera_name, motion_list in self.master_tracker.camera_motion_data.items():
                 if camera_name not in self.camera_positions or not motion_list:
                     continue
                     
-                # Nur Events der letzten Sekunde
-                very_recent = []
+                # Nur Events der letzten 3 Sekunden für bewegungsanalyse
+                recent_motions = []
                 for motion in motion_list:
                     try:
-                        if current_time - motion['timestamp'] < 1.0:
-                            very_recent.append(motion)
+                        if current_time - motion['timestamp'] > 3.0:
+                            continue
+                            
+                        # ANTI-STATIONARY FILTER: Prüfe signifikante Bewegung
+                        motion_x = motion.get('x', 0)
+                        motion_y = motion.get('y', 0)
+                        motion_time = motion.get('timestamp', current_time)
+                        
+                        # Suche nach älterer Position im Zeitfenster
+                        has_significant_movement = False
+                        for older_motion in motion_list:
+                            older_time = older_motion.get('timestamp', 0)
+                            if (motion_time - older_time) > time_window and (motion_time - older_time) < time_window * 2:
+                                older_x = older_motion.get('x', 0)
+                                older_y = older_motion.get('y', 0)
+                                
+                                # Berechne Bewegungsdistanz
+                                distance = ((motion_x - older_x)**2 + (motion_y - older_y)**2)**0.5
+                                
+                                if distance >= min_distance:
+                                    has_significant_movement = True
+                                    break
+                        
+                        # Nur Motions mit signifikanter Bewegung akzeptieren
+                        if has_significant_movement or len(motion_list) < 5:  # Bei wenigen Daten weniger streng
+                            recent_motions.append(motion)
+                        
                     except:
                         continue
                         
-                if very_recent:
-                    recent_motions[camera_name] = very_recent
+                if recent_motions:
+                    filtered_motions[camera_name] = recent_motions
             
-            if len(recent_motions) < 2:
+            if len(filtered_motions) < 2:
                 return {}
             
-            # Finde beste zeitliche Übereinstimmung
-            camera_names = list(recent_motions.keys())
+            # Finde beste zeitliche Übereinstimmung mit gefilterten Daten
+            camera_names = list(filtered_motions.keys())
             best_match = None
             best_time_diff = float('inf')
             
@@ -341,8 +371,8 @@ class Stable3DTriangulation:
                     cam1_name = camera_names[i]
                     cam2_name = camera_names[j]
                     
-                    for motion1 in recent_motions[cam1_name]:
-                        for motion2 in recent_motions[cam2_name]:
+                    for motion1 in filtered_motions[cam1_name]:
+                        for motion2 in filtered_motions[cam2_name]:
                             try:
                                 time_diff = abs(motion1['timestamp'] - motion2['timestamp'])
                                 if time_diff < sync_tolerance and time_diff < best_time_diff:
@@ -391,7 +421,7 @@ class Stable3DTriangulation:
             pass
     
     def _calculate_and_draw_triangulation(self, synchronized_motions):
-        """Berechne und zeichne Triangulation"""
+        """Berechne und zeichne Triangulation - vereinfacht ohne Konfidenz-Filter"""
         try:
             if len(synchronized_motions) < 2:
                 return
@@ -420,7 +450,7 @@ class Stable3DTriangulation:
                         # Triangulation
                         intersection, confidence = self._line_intersection_3d_with_confidence(pos1, dir1, pos2, dir2)
                         
-                        if intersection is not None and confidence > 0.2:
+                        if intersection is not None and confidence > 0.1:  # Niedrigere Schwelle
                             triangulated_points.append(intersection)
                             confidence_scores.append(confidence)
                             
@@ -436,14 +466,20 @@ class Stable3DTriangulation:
                     for point, confidence in zip(triangulated_points, confidence_scores):
                         weighted_position += point * (confidence / total_weight)
                     
+                    # Marker-Größe basierend auf Konfidenz (größer = mehr Vertrauen)
+                    avg_confidence = total_weight / len(confidence_scores)
+                    marker_size = 100 + (avg_confidence * 300)
+                    
                     # Finale Position als große Kugel
-                    self.ax.scatter(*weighted_position, color='cyan', s=200, alpha=1.0, 
+                    self.ax.scatter(*weighted_position, color='cyan', s=marker_size, alpha=1.0, 
                                   marker='o', edgecolors='white', linewidth=2)
                     
-                    # Koordinaten-Info
+                    # Koordinaten-Info mit Konfidenz
                     distance = np.linalg.norm(weighted_position)
-                    if distance > 1:  # Nur bei realistischen Entfernungen
-                        coord_text = f"📍 {distance:.1f}m\\n({weighted_position[0]:.1f}, {weighted_position[1]:.1f}, {weighted_position[2]:.1f})"
+                    if 1 <= distance <= 1000:  # Nur bei plausiblen Entfernungen
+                        coord_text = (f"📍 {distance:.1f}m (Conf: {avg_confidence:.2f})\n"
+                                    f"({weighted_position[0]:.1f}, {weighted_position[1]:.1f}, {weighted_position[2]:.1f})\n"
+                                    f"Triangulationen: {len(triangulated_points)}")
                         self.ax.text(weighted_position[0], weighted_position[1], weighted_position[2] + 0.2,
                                    coord_text, color='cyan', fontsize=8, ha='center')
                     
@@ -727,6 +763,10 @@ class MasterMotionTracker:
                                            command=self.open_triangulation_view)
         self.triangulation_btn.pack(side=tk.LEFT, padx=5)
         
+        self.last_detection_btn = ttk.Button(control_frame, text="🐦 Last Detection", 
+                                            command=self.open_last_detection_view)
+        self.last_detection_btn.pack(side=tk.LEFT, padx=5)
+        
         # Advanced settings (collapsible)
         self.settings_visible = False
         self.settings_btn = ttk.Button(control_frame, text="⚙️ Advanced Settings", 
@@ -763,11 +803,59 @@ class MasterMotionTracker:
         max_area_label = ttk.Label(self.settings_frame, textvariable=self.max_area_var)
         max_area_label.grid(row=2, column=2, padx=5)
         
-        # Help text
-        help_text = ("💡 Tipp: Min Area=1 für maximale Sensitivität (detektiert einzelne Pixel). "
-                    "Max Area bis 50000 für große Objekte. Threshold steuert Bewegungs-Sensitivität.")
-        ttk.Label(self.settings_frame, text=help_text, font=("Arial", 8), foreground="gray").grid(
-            row=3, column=0, columnspan=3, sticky=tk.W, padx=5, pady=(5,0))
+        # Separator für Störungsfilter
+        separator = ttk.Separator(self.settings_frame, orient=tk.HORIZONTAL)
+        separator.grid(row=3, column=0, columnspan=3, sticky=(tk.W, tk.E), padx=5, pady=10)
+        
+        # Anti-Wolken Filter Label
+        ttk.Label(self.settings_frame, text="🌤️ ANTI-WOLKEN FILTER - Intelligente Himmelbeobachtung:", 
+                 font=("Arial", 9, "bold"), foreground="cyan").grid(row=4, column=0, columnspan=3, sticky=tk.W, padx=5, pady=(5,0))
+        
+        # Mindest-Bewegungsdistanz (HÖHER gegen Wolken-Drift)
+        ttk.Label(self.settings_frame, text="🎯 Mindest-Bewegung (Pixel):").grid(row=5, column=0, sticky=tk.W, padx=5)
+        self.min_movement_var = tk.IntVar(value=15)  # Höher für echte Motion
+        movement_scale = ttk.Scale(self.settings_frame, from_=8, to=40,  
+                                  variable=self.min_movement_var, orient=tk.HORIZONTAL, length=200)
+        movement_scale.grid(row=5, column=1, sticky=(tk.W, tk.E), padx=5)
+        movement_label = ttk.Label(self.settings_frame, textvariable=self.min_movement_var)
+        movement_label.grid(row=5, column=2, padx=5)
+        
+        # Minimum Area Filter (gegen Reflexionen)
+        ttk.Label(self.settings_frame, text="📏 Min Area (gegen Reflexionen):").grid(row=6, column=0, sticky=tk.W, padx=5)
+        self.min_area_var = tk.IntVar(value=120)  
+        min_area_scale = ttk.Scale(self.settings_frame, from_=50, to=500,  
+                                  variable=self.min_area_var, orient=tk.HORIZONTAL, length=200)
+        min_area_scale.grid(row=6, column=1, sticky=(tk.W, tk.E), padx=5)
+        min_area_label = ttk.Label(self.settings_frame, textvariable=self.min_area_var)
+        min_area_label.grid(row=6, column=2, padx=5)
+        
+        # Maximum Area Filter (gegen große Wolken)
+        ttk.Label(self.settings_frame, text="☁️ Max Area (gegen Wolken):").grid(row=7, column=0, sticky=tk.W, padx=5)
+        self.max_area_var = tk.IntVar(value=2500)
+        max_area_scale = ttk.Scale(self.settings_frame, from_=1000, to=8000,
+                                  variable=self.max_area_var, orient=tk.HORIZONTAL, length=200)
+        max_area_scale.grid(row=7, column=1, sticky=(tk.W, tk.E), padx=5)
+        max_area_label = ttk.Label(self.settings_frame, textvariable=self.max_area_var)
+        max_area_label.grid(row=7, column=2, padx=5)
+        
+        # Speed Range Filter (Vögel vs Wolken)
+        ttk.Label(self.settings_frame, text="🦅 Speed Min (Vogel-typisch):").grid(row=8, column=0, sticky=tk.W, padx=5)
+        self.min_speed_var = tk.IntVar(value=20)
+        min_speed_scale = ttk.Scale(self.settings_frame, from_=10, to=60,
+                                   variable=self.min_speed_var, orient=tk.HORIZONTAL, length=200)
+        min_speed_scale.grid(row=8, column=1, sticky=(tk.W, tk.E), padx=5)
+        min_speed_label = ttk.Label(self.settings_frame, textvariable=self.min_speed_var)
+        min_speed_label.grid(row=8, column=2, padx=5)
+        
+        # Help text für ANTI-WOLKEN FILTER
+        help_text = ("🌤️ ANTI-WOLKEN FILTER (Himmel-optimiert):\n"
+                    "• Movement: ≥15px = Echte Bewegung (filtert Wolken-Drift)\n"
+                    "• Min Area: ≥120px² = Filtert Reflexionen und Pixelfehler\n" 
+                    "• Max Area: ≤2500px² = Filtert große Wolken-Formationen\n"
+                    "• Min Speed: ≥20px/frame = Vogel-typische Geschwindigkeit\n"
+                    "• ERGEBNIS: Nur schnelle, kompakte Flugobjekte = VÖGEL")
+        ttk.Label(self.settings_frame, text=help_text, font=("Arial", 8), foreground="cyan").grid(
+            row=9, column=0, columnspan=3, sticky=tk.W, padx=5, pady=(5,0))
         
         self.settings_frame.columnconfigure(1, weight=1)
         
@@ -982,6 +1070,86 @@ class MasterMotionTracker:
             
         threading.Thread(target=start_stable, daemon=True).start()
         self.log("🚀 Stabile 3D-Triangulation gestartet (matplotlib)")
+        
+    def open_last_detection_view(self):
+        """Öffne Last Detection Window - zeigt letztes erkanntes Objekt"""
+        if not self.is_tracking:
+            messagebox.showwarning("Last Detection", "Bitte starten Sie zuerst das Motion Tracking!")
+            return
+            
+        # Starte Last Detection Window in separatem Thread
+        def start_last_detection():
+            self._last_detection_window()
+            
+        threading.Thread(target=start_last_detection, daemon=True).start()
+        self.log("🐦 Last Detection Window gestartet")
+        
+    def _last_detection_window(self):
+        """Live Last Detection Window - THREAD-SICHER"""
+        try:
+            cv2.namedWindow('🐦 Last Detection - Filtered Objects Only', cv2.WINDOW_NORMAL)
+            cv2.resizeWindow('🐦 Last Detection - Filtered Objects Only', 400, 300)
+            
+            # Create empty starting frame
+            empty_frame = np.zeros((200, 300, 3), dtype=np.uint8)
+            cv2.putText(empty_frame, 'Waiting for filtered detection...', 
+                       (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+            cv2.putText(empty_frame, 'Press ESC or Q to CLOSE', 
+                       (20, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+            
+            while self.is_tracking:
+                try:
+                    # Check if we have a last detection
+                    if hasattr(self, 'last_detection_frame') and self.last_detection_frame is not None:
+                        display_frame = self.last_detection_frame.copy()
+                        
+                        # Resize for better visibility
+                        if display_frame.shape[0] < 150:
+                            scale = 150 / display_frame.shape[0]
+                            new_width = int(display_frame.shape[1] * scale)
+                            new_height = int(display_frame.shape[0] * scale)
+                            display_frame = cv2.resize(display_frame, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
+                        
+                        # Add info overlay
+                        if hasattr(self, 'last_detection_info'):
+                            info = self.last_detection_info
+                            timestamp_str = datetime.fromtimestamp(info['timestamp']).strftime("%H:%M:%S.%f")[:-3]
+                            
+                            # Info box with close instruction
+                            cv2.putText(display_frame, f"Camera: {info['camera']}", 
+                                       (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+                            cv2.putText(display_frame, f"Time: {timestamp_str}", 
+                                       (5, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+                            cv2.putText(display_frame, f"Area: {info['area']} px", 
+                                       (5, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+                            cv2.putText(display_frame, f"Filter: {info.get('reason', 'PASSED')}", 
+                                       (5, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
+                            cv2.putText(display_frame, "ESC/Q = CLOSE WINDOW", 
+                                       (5, display_frame.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 1)
+                        
+                        cv2.imshow('🐦 Last Detection - Filtered Objects Only', display_frame)
+                    else:
+                        cv2.imshow('🐦 Last Detection - Filtered Objects Only', empty_frame)
+                    
+                    # CLOSE WINDOW CHECK - mit sofortiger Reaktion
+                    key = cv2.waitKey(50) & 0xFF  # Schnellere Reaktion
+                    if key == ord('q') or key == 27:  # q or ESC
+                        print("🔴 Last Detection Window CLOSED by user")
+                        break
+                        
+                except Exception as e:
+                    print(f"⚠️ Last Detection Window Error: {str(e)}")
+                    break
+                    
+        except Exception as e:
+            print(f"⚠️ Last Detection Window Setup Error: {str(e)}")
+        finally:
+            # SICHERE Window-Cleanup
+            try:
+                cv2.destroyWindow('🐦 Last Detection - Filtered Objects Only')
+                cv2.waitKey(1)
+            except Exception:
+                pass
         
     def _triangulation_worker(self):
         """Live 3D Triangulation Worker Thread"""
@@ -2228,12 +2396,24 @@ class MasterMotionTracker:
             if hasattr(self, 'tracking_thread') and self.tracking_thread.is_alive():
                 self.tracking_thread.join(timeout=2.0)  # Max 2 seconds wait
             
-            # Close OpenCV windows
+            # SICHERE OpenCV Window Cleanup
             try:
+                # Alle OpenCV Windows schließen
                 cv2.destroyAllWindows()
                 cv2.waitKey(1)
-                time.sleep(0.1)  # Give windows time to close
-                cv2.destroyAllWindows()  # Second attempt
+                
+                # Warte kurz und versuche nochmal
+                time.sleep(0.2)
+                cv2.destroyAllWindows()
+                cv2.waitKey(1)
+                
+                # Force cleanup für spezielle Windows
+                try:
+                    cv2.destroyWindow("🔥 Last Detection")
+                    cv2.destroyWindow("🐦 Last Detection - Filtered Objects Only")
+                except:
+                    pass
+                    
             except Exception as e:
                 self.log(f"⚠️ OpenCV Window-Cleanup: {str(e)}")
             
@@ -2609,46 +2789,150 @@ class MasterMotionTracker:
         # Find contours
         contours, _ = cv2.findContours(fg_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
-        # Process contours
+        # Process contours with ERWEITERTE Anti-Stationary Filter
         motion_count = 0
+        filtered_motion_count = 0
         result_frame = frame.copy()
+        
+        # Get live filter settings (PERFORMANCE-OPTIMIERT)
+        min_movement = self.min_movement_var.get() if hasattr(self, 'min_movement_var') else 5  # Sehr niedrig
+        time_window = self.movement_window_var.get() if hasattr(self, 'movement_window_var') else 1.0
+        consistency_frames = self.consistency_var.get() if hasattr(self, 'consistency_var') else 3
+        current_time = time.time()
         
         for contour in contours:
             area = cv2.contourArea(contour)
             if min_area <= area <= max_area:
                 motion_count += 1
                 
-                # Draw bounding box
+                # Get contour info
                 x, y, w, h = cv2.boundingRect(contour)
-                cv2.rectangle(result_frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
-                cv2.putText(result_frame, f'M{motion_count}', 
-                           (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-                           
-                # Motion point für 3D viewer
                 center_x = x + w // 2
                 center_y = y + h // 2
-                timestamp = time.time()
+                timestamp = current_time
+                
+                # ANTI-WOLKEN FILTER - INTELLIGENTE HIMMELBEOBACHTUNG
+                passes_filter = True  # Start optimistisch
+                filter_reasons = []
+                
+                # 1. Mindest-Bewegung (gegen Wolken-Drift)
+                min_movement = getattr(self, 'min_movement_var', type('obj', (object,), {'get': lambda: 15})).get()
+                if stream_name in self.camera_motion_data and len(self.camera_motion_data[stream_name]) >= 2:
+                    last_motion = list(self.camera_motion_data[stream_name])[-1]
+                    last_x = last_motion.get('x', 0)
+                    last_y = last_motion.get('y', 0)
+                    distance = ((center_x - last_x)**2 + (center_y - last_y)**2)**0.5
+                    
+                    if distance < min_movement:
+                        passes_filter = False
+                        filter_reasons.append("SLOW")
+                    else:
+                        filter_reasons.append("FAST")
+                
+                # 2. Area Filter (gegen Reflexionen und große Wolken)
+                min_area_threshold = getattr(self, 'min_area_var', type('obj', (object,), {'get': lambda: 120})).get()
+                max_area_threshold = getattr(self, 'max_area_var', type('obj', (object,), {'get': lambda: 2500})).get()
+                
+                if area < min_area_threshold:
+                    passes_filter = False
+                    filter_reasons.append("TINY")
+                elif area > max_area_threshold:
+                    passes_filter = False 
+                    filter_reasons.append("HUGE")
+                else:
+                    filter_reasons.append("SIZE_OK")
+                
+                # 3. Speed Filter (Vogel-typische Geschwindigkeit)
+                min_speed = getattr(self, 'min_speed_var', type('obj', (object,), {'get': lambda: 20})).get()
+                if stream_name in self.camera_motion_data and len(self.camera_motion_data[stream_name]) >= 3:
+                    # Berechne Geschwindigkeit über letzte Frames
+                    motions = list(self.camera_motion_data[stream_name])[-3:]
+                    if len(motions) >= 2:
+                        time_diff = motions[-1]['timestamp'] - motions[-2]['timestamp']
+                        if time_diff > 0:
+                            speed = distance / time_diff  # Pixel pro Sekunde
+                            speed_per_frame = speed / 30  # Annahme: 30 FPS
+                            
+                            if speed_per_frame < min_speed:
+                                passes_filter = False
+                                filter_reasons.append("CRAWL")
+                            else:
+                                filter_reasons.append("BIRD_SPEED")
+                
+                # Zusammenfassung der Filter-Gründe
+                if not filter_reasons:
+                    filter_reasons = ["FIRST"]
+                    
+                filter_reason = " ".join(filter_reasons[:2])  # Maximal 2 Gründe
+                
+                # Draw based on filter result
+                if passes_filter:
+                    filtered_motion_count += 1
+                    # Green = passes filter
+                    cv2.rectangle(result_frame, (x, y), (x+w, y+h), (0, 255, 0), 3)
+                    cv2.putText(result_frame, f'F{filtered_motion_count}', 
+                               (x, y-25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                    cv2.putText(result_frame, filter_reason, 
+                               (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 255, 0), 1)
+                    
+                    # Store for Last Detection Window
+                    if not hasattr(self, 'last_detection_frame'):
+                        self.last_detection_frame = None
+                    
+                    # Extract detection region (größerer Bereich)
+                    padding = 30
+                    detection_region = frame[max(0, y-padding):min(frame.shape[0], y+h+padding), 
+                                           max(0, x-padding):min(frame.shape[1], x+w+padding)]
+                    if detection_region.size > 0:
+                        self.last_detection_frame = detection_region.copy()
+                        self.last_detection_info = {
+                            'timestamp': timestamp,
+                            'camera': stream_name,
+                            'area': area,
+                            'center': (center_x, center_y),
+                            'bbox': (x, y, w, h),
+                            'reason': filter_reason
+                        }
+                else:
+                    # Red = filtered out
+                    cv2.rectangle(result_frame, (x, y), (x+w, y+h), (0, 0, 255), 2)
+                    cv2.putText(result_frame, f'M{motion_count}', 
+                               (x, y-25), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1)
+                    cv2.putText(result_frame, filter_reason, 
+                               (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 255), 1)
+                           
+                # Motion point für 3D viewer (auch für gefilterte)
                 self.motion_data.append((center_x, center_y, area, timestamp))
                 
-                # Kamera-spezifische Daten für Triangulation
-                if stream_name not in self.camera_motion_data:
-                    self.camera_motion_data[stream_name] = deque(maxlen=100)
-                self.camera_motion_data[stream_name].append({
-                    'x': center_x,
-                    'y': center_y, 
-                    'area': area,
-                    'timestamp': timestamp,
-                    'camera': stream_name
-                })
+                # Kamera-spezifische Daten für Triangulation (nur filtered)
+                if passes_filter:
+                    if stream_name not in self.camera_motion_data:
+                        self.camera_motion_data[stream_name] = deque(maxlen=20)  # Reduziert für bessere Performance
+                    self.camera_motion_data[stream_name].append({
+                        'x': center_x,
+                        'y': center_y, 
+                        'area': area,
+                        'timestamp': timestamp,
+                        'camera': stream_name
+                    })
                            
-        # Add stream info
+        # Add stream info with enhanced Anti-Wolken filter stats
         timestamp_str = datetime.now().strftime("%H:%M:%S")
         cv2.putText(result_frame, f'{stream_name} - {timestamp_str}', 
                    (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        cv2.putText(result_frame, f'Motions: {motion_count}', 
+        cv2.putText(result_frame, f'Total Motion: {motion_count} | 🦅 Vögel: {filtered_motion_count}', 
                    (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        
+        # Filter-Parameter anzeigen
+        min_movement = getattr(self, 'min_movement_var', type('obj', (object,), {'get': lambda: 15})).get()
+        min_area_val = getattr(self, 'min_area_var', type('obj', (object,), {'get': lambda: 120})).get()
+        max_area_val = getattr(self, 'max_area_var', type('obj', (object,), {'get': lambda: 2500})).get()
+        min_speed_val = getattr(self, 'min_speed_var', type('obj', (object,), {'get': lambda: 20})).get()
+        
+        cv2.putText(result_frame, f'🌤️ Anti-Wolken: Move≥{min_movement}px Area{min_area_val}-{max_area_val}px² Speed≥{min_speed_val}', 
+                   (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1)
                    
-        return result_frame, motion_count
+        return result_frame, filtered_motion_count  # Return filtered count
         
     def _display_frames(self, frames, motion_counts, frame_count, start_time):
         """Display processed frames - supports unlimited cameras"""
