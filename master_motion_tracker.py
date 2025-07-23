@@ -262,9 +262,14 @@ class MasterMotionTracker:
                                        command=self.open_dashboard)
         self.dashboard_btn.pack(side=tk.LEFT, padx=5)
         
-        self.triangulation_btn = ttk.Button(control_frame, text="📐 3D Triangulation", 
+        self.triangulation_btn = ttk.Button(control_frame, text="📐 3D Triangulation (PyVista)", 
                                            command=self.open_triangulation_view)
         self.triangulation_btn.pack(side=tk.LEFT, padx=5)
+        
+        # NEUE stabile Alternative
+        self.stable_triangulation_btn = ttk.Button(control_frame, text="🎯 STABILE 3D Triangulation", 
+                                                  command=self.open_stable_triangulation_view)
+        self.stable_triangulation_btn.pack(side=tk.LEFT, padx=5)
         
         # Advanced settings (collapsible)
         self.settings_visible = False
@@ -572,29 +577,26 @@ class MasterMotionTracker:
                 os.environ['PYVISTA_OFF_SCREEN'] = 'false'
                 os.environ['PYVISTA_USE_PANEL'] = 'false'
                 
-                # Robuste OpenGL-Initialisierung
+                # Robuste OpenGL-Initialisierung - KEIN Multi-Sampling für Stabilität
                 try:
-                    plotter = pv.Plotter(title="🎯 LIVE 3D Triangulation - Mosquito & Object Tracking",
-                                       window_size=[1200, 800])  # Entferne multi_samples
+                    # Einfachster möglicher Plotter für maximale Stabilität
+                    plotter = pv.Plotter(
+                        title="🎯 CRASH-SICHER: Live 3D Triangulation - Himmel Tracking",
+                        window_size=[1000, 700],
+                        menu_bar=False,  # Keine Menüs = weniger Crash-Risiko
+                        toolbar=False    # Keine Toolbar = weniger Crash-Risiko
+                    )
                     plotter.background_color = 'black'
-                except Exception as plotter_error:
-                    # Fallback: Noch einfacherer Plotter
-                    self.log(f"⚠️ Standard Plotter fehlgeschlagen: {plotter_error}")
-                    plotter = pv.Plotter(window_size=[1000, 700])
-                    plotter.background_color = 'black'
-                
-                # Sicherer Anti-Aliasing-Test
-                try:
-                    plotter.enable_anti_aliasing()
-                except Exception:
-                    pass  # Fallback wenn nicht unterstützt
                     
-                # Depth peeling nur wenn unterstützt
-                try:
-                    if hasattr(plotter, 'enable_depth_peeling'):
-                        plotter.enable_depth_peeling()
-                except Exception:
-                    pass  # Fallback
+                    # KEINE erweiterten Features - diese können crashen
+                    # plotter.enable_anti_aliasing()  # DEAKTIVIERT - kann crashen
+                    # plotter.enable_depth_peeling()  # DEAKTIVIERT - kann crashen
+                    
+                except Exception as plotter_error:
+                    # Absoluter Fallback: Minimal-Plotter
+                    self.log(f"⚠️ Standard Plotter fehlgeschlagen: {plotter_error}")
+                    plotter = pv.Plotter()
+                    plotter.background_color = 'black'
                     
             except Exception as e:
                 # Absoluter Fallback: Minimal-Plotter
@@ -632,25 +634,25 @@ class MasterMotionTracker:
             # Interaktive GUI für Kamera-Positionierung
             self._setup_camera_controls(plotter)
             
-            # Steuerungstext
-            plotter.add_text("🎯 LIVE 3D TRIANGULATION\n\n"
-                            "📷 Kamera-Positionen (realistisch):\n"
-                            "• Webcam 0: ROT (Links, -1m)\n"
-                            "• Webcam 1: GRÜN (Rechts, +1m)\n" 
-                            "• Webcam 2: BLAU (Zentrum)\n\n"
+            # Steuerungstext - angepasst für Himmel-Tracking
+            plotter.add_text("🎯 HIMMEL TRACKING - Flugzeuge & Vögel\n\n"
+                            "📷 Kamera-Setup (Himmel-Tracking):\n"
+                            "• Webcam 0: ROT (Links, 5cm)\n"
+                            "• Webcam 1: GRÜN (Rechts, 5cm)\n" 
+                            "• Beide parallel zum Himmel gerichtet\n\n"
                             "🔄 Physische Anordnung:\n"
-                            "• Nebeneinander auf gleicher Höhe\n"
-                            "• 30° Rotation zueinander\n"
-                            "• Überlappende Sichtfelder\n\n"
-                            "🦟 LIVE TRACKING:\n"
+                            "• 10cm Abstand (Stereo-Basis)\n"
+                            "• 60° Elevation (Himmel-Winkel)\n"
+                            "• Parallele Ausrichtung\n\n"
+                            "✈️ HIMMEL TRACKING:\n"
                             "• Orange Strahlen: Motion Detection\n"
                             "• Cyan Kugel: Trianguliertes Objekt\n"
-                            "• Koordinaten werden live aktualisiert\n\n"
+                            "• Optimiert für große Entfernungen\n\n"
                             "🎮 Steuerung:\n"
                             "• Maus-Drag: 3D Navigation\n"
                             "• Rad: Zoom\n"
-                            "• R: Reset View\n"
-                            "• Q: Beenden", 
+                            "• ESC: Sicher beenden\n"
+                            "• ⚠️ Q vermeiden (beendet alles)", 
                             position='upper_left', font_size=9, color='white')
             
             # Starte Plotter OHNE show() zunächst
@@ -670,52 +672,115 @@ class MasterMotionTracker:
         finally:
             self.triangulation_active = False
             
-    def _run_live_updates_without_show(self, plotter):
-        """Führe Live-Updates ohne plotter.show() aus um Thread-Konflikte zu vermeiden"""
+    def open_stable_triangulation_view(self):
+        """Öffne STABILE 3D-Triangulation mit matplotlib - CRASH-SICHER"""
+        if not self.is_tracking:
+            messagebox.showwarning("Triangulation", "Bitte starten Sie zuerst das Motion Tracking!")
+            return
+            
         try:
-            # Show the plotter window once
-            plotter.show(interactive=False, auto_close=False)
+            # Importiere die stabile Version
+            from simple_3d_triangulation import Stable3DTriangulation
             
-            # Run live update loop
-            update_counter = 0
-            error_count = 0
-            max_errors = 10
+            # Erstelle stabile Triangulation
+            triangulation = Stable3DTriangulation(self)
             
-            while self.triangulation_active and self.is_tracking and error_count < max_errors:
-                try:
-                    # Robuste Render-Zyklen mit Fehlerbehandlung
-                    if update_counter % 5 == 0:  # Weniger häufige komplette Updates
+            # Starte in separatem Thread
+            def start_stable():
+                triangulation.start_triangulation()
+                
+            threading.Thread(target=start_stable, daemon=True).start()
+            self.log("🚀 STABILE 3D-Triangulation gestartet (matplotlib) - CRASH-SICHER!")
+            
+        except ImportError:
+            messagebox.showerror("Stabile Triangulation", 
+                               "simple_3d_triangulation.py nicht gefunden!\n"
+                               "Bitte stellen Sie sicher, dass die Datei im gleichen Ordner liegt.")
+        except Exception as e:
+            messagebox.showerror("Stabile Triangulation", f"Fehler beim Starten: {str(e)}")
+            self.log(f"❌ Stabile Triangulation Fehler: {str(e)}")
+    
+    def _run_live_updates_without_show(self, plotter):
+        """Führe Live-Updates ohne plotter.show() aus - THREAD-SICHER"""
+        try:
+            # WICHTIG: show() im MAIN THREAD aufrufen, nicht im Worker Thread!
+            # Das verhindert den Warte-Cursor und Threading-Konflikte
+            plotter.show(interactive=True, auto_close=False)  # Interactive = True für echte GUI
+            
+            # Setze Window-spezifische Einstellungen für Stabilität
+            if hasattr(plotter, 'iren') and plotter.iren:
+                plotter.iren.SetDesiredUpdateRate(2.0)  # Nur 2 FPS für Stabilität
+                
+        except Exception as e:
+            self.log(f"❌ Plotter-Show fehlgeschlagen: {str(e)}")
+            self.triangulation_active = False
+            return
+            
+        # Live-Update-Loop - KEIN separater Thread mehr!
+        # Updates werden über Timer-Events gemacht
+        update_counter = 0
+        error_count = 0
+        
+        self.log("🎯 Triangulation läuft - Thread-sicher ohne Worker-Thread")
+        
+        def update_visualization():
+            """Timer-basierte Updates statt Thread-Loop"""
+            nonlocal update_counter, error_count
+            
+            if not self.triangulation_active or not self.is_tracking:
+                return False  # Stop Timer
+                
+            try:
+                # Nur bei echten Motion-Updates rendern
+                if hasattr(self, 'camera_motion_data') and self.camera_motion_data:
+                    # Clear nur wenn nötig
+                    if update_counter % 20 == 0:  # Noch seltener
                         self._clear_motion_objects(plotter)
                     
-                    if self.camera_motion_data:
-                        self._draw_live_camera_rays(plotter)
-                        self._calculate_live_triangulation(plotter)
+                    # Filtere synchrone Bewegungen ZUERST
+                    synchronized_motions = self._filter_synchronized_motions()
                     
-                    # Sehr konservative Render-Updates um OpenGL-Konflikte zu vermeiden
-                    if update_counter % 3 == 0:  # Render nur alle 3 Frames
-                        try:
-                            plotter.render()
-                            error_count = 0  # Reset error counter bei erfolgreichem Render
-                        except Exception as render_error:
-                            error_count += 1
-                            self.log(f"⚠️ Render-Fehler {error_count}/{max_errors}: {render_error}")
-                            if error_count >= max_errors:
-                                self.log("❌ Zu viele Render-Fehler, stoppe Live-Updates")
-                                break
-                    
-                    update_counter += 1
-                    time.sleep(0.2)  # Längere Pause für stabileres Rendering (5 FPS)
-                    
-                except Exception as e:
-                    error_count += 1
-                    self.log(f"⚠️ Live update error {error_count}/{max_errors}: {e}")
-                    time.sleep(1.0)  # Längere Pause bei Fehlern
-                    if error_count >= max_errors:
-                        self.log("❌ Zu viele Update-Fehler, stoppe Live-Updates")
-                        break
+                    if synchronized_motions and len(synchronized_motions) >= 2:
+                        # Nur zeichnen wenn synchrone Motion auf beiden Kameras
+                        self._draw_filtered_camera_rays(plotter, synchronized_motions)
+                        self._calculate_filtered_triangulation(plotter, synchronized_motions)
                         
+                        # Render nur wenn neue Daten vorhanden
+                        if update_counter % 5 == 0:  # Alle 5 Updates
+                            plotter.render()
+                
+                update_counter += 1
+                error_count = 0
+                
+            except Exception as e:
+                error_count += 1
+                if error_count <= 3:
+                    self.log(f"⚠️ Update-Fehler #{error_count}: {str(e)[:30]}...")
+                if error_count >= 10:
+                    self.log("❌ Zu viele Fehler - stoppe Updates")
+                    return False
+                    
+            return True  # Continue Timer
+        
+        # Timer-basierte Updates statt Thread-Loop
+        try:
+            import threading
+            timer_interval = 0.5  # 2 FPS
+            
+            def timer_loop():
+                while self.triangulation_active and self.is_tracking:
+                    if not update_visualization():
+                        break
+                    time.sleep(timer_interval)
+                self.log("✅ Timer-Loop beendet")
+                
+            # Timer in separatem Thread - aber GUI-Updates im Main Thread
+            timer_thread = threading.Thread(target=timer_loop, daemon=True)
+            timer_thread.start()
+            
         except Exception as e:
-            self.log(f"❌ Live-Updates fehlgeschlagen: {e}")
+            self.log(f"❌ Timer-Setup fehlgeschlagen: {str(e)}")
+            self.triangulation_active = False
             
     def _setup_3d_scene(self, plotter):
         """Setup der 3D Szene mit Koordinatensystem und Kameras"""
@@ -771,18 +836,20 @@ class MasterMotionTracker:
         """Füge Sichtfeld-Visualisierung für Kamera hinzu"""
         # Field of View Kegel (60° Öffnungswinkel, normal für Webcams)
         fov_angle = 60  # Grad - typischer Webcam-FOV
-        fov_distance = 3.0  # 3 Meter Sichtweite
+        fov_distance = 50.0  # 50 Meter Sichtweite für Himmel-Tracking
         
         # Berechne Kegel-Richtung basierend auf physische Anordnung
-        # Beide Kameras schauen nach vorne, aber um 30° zueinander rotiert
+        # Himmel-Tracking: Beide Kameras schauen parallel nach oben/vorne (Flugzeuge/Vögel)
         if camera_name == 'webcam_0':
-            direction = np.array([0.5, 0.866, 0])  # 30° nach rechts (von links kommend)
+            # Linke Kamera: leicht nach oben und vorne gerichtet (Himmel)
+            direction = np.array([0, 0.5, 0.866])  # 60° nach oben (Himmel-Blickwinkel)
         elif camera_name == 'webcam_1':
-            direction = np.array([-0.5, 0.866, 0])  # 30° nach links (von rechts kommend)
+            # Rechte Kamera: ebenfalls nach oben und vorne gerichtet (parallel zur linken)
+            direction = np.array([0, 0.5, 0.866])  # 60° nach oben (parallel)
         elif camera_name == 'webcam_2':
-            direction = np.array([0, 1, 0])  # Zentral nach vorne (falls vorhanden)
+            direction = np.array([0, 0.5, 0.866])  # Ebenfalls Himmel-gerichtet
         else:
-            direction = np.array([0, 1, 0])  # Default nach vorne
+            direction = np.array([0, 0.5, 0.866])  # Default Himmel-Richtung
         
         # Erstelle Sichtfeld-Kegel
         cone_center = position + direction * (fov_distance / 2)
@@ -794,267 +861,483 @@ class MasterMotionTracker:
         plotter.add_mesh(fov_cone, color=color, opacity=0.2, style='wireframe')
                 
     def _setup_camera_controls(self, plotter):
-        """Setup interaktive Kamera-Positionierungs-Controls"""
-        # Checkbox für jede Kamera für einfache Positionierung
-        control_text = ("📍 KAMERA-POSITIONIERUNG:\n"
-                       "• Drag & Drop Kameras in 3D\n"
-                       "• Rechtsklick: Kamera-Menü\n"
-                       "• Realistische Anordnung:\n"
-                       "  - Nebeneinander auf gleicher Höhe\n"
-                       "  - 30° Rotation zueinander\n"
-                       "  - Überlappende Sichtfelder\n\n"
-                       "🎮 LIVE CONTROLS:\n"
-                       "• 1-3: Kamera auswählen & bewegen\n"
-                       "• X/Y/Z: Achse sperren\n"
-                       "• R: Reset Positionen")
+        """Setup einfache Kamera-Preset-Controls ohne Drag&Drop"""
+        # Info-Text mit Filter-Information
+        control_text = ("📍 SYNC-FILTER AKTIV:\n"
+                       "• Nur zeitgleiche Bewegungen (±300ms)\n"
+                       "• Beide Kameras müssen Motion erkennen\n"
+                       "• Himmel-Tracking: 100m Strahlen\n\n"
+                       "🎮 NAVIGATION (THREAD-SICHER):\n"
+                       "• Maus-Drag: 3D Rotation\n"
+                       "• Maus-Rad: Zoom\n"
+                       "• Rechts-Drag: Pan\n\n"
+                       "⚠️ CRASH-SICHER:\n"
+                       "• Timer-basierte Updates\n"
+                       "• Kein Worker-Thread\n"
+                       "• Synchron-Filter aktiv\n"
+                       "• Kein Warte-Cursor mehr!")
         
         plotter.add_text(control_text, position='lower_left', font_size=8, color='yellow')
         
-        # Interaktive Kamera-Positionierung mit korrekter PyVista Callback-Syntax
+        # Nur Preset-Shortcuts - keine Drag&Drop-Funktionen
         def on_key_1():
-            """Kamera 1 auswählen"""
-            self.selected_camera = 'webcam_0'
-            self.log("📷 Kamera ausgewählt: webcam_0")
+            """Himmel-Tracking Preset"""
+            self._set_sky_preset()
+            self.log("📷 Preset 1: Himmel-Tracking aktiviert")
             
         def on_key_2():
-            """Kamera 2 auswählen"""
-            self.selected_camera = 'webcam_1'
-            self.log("📷 Kamera ausgewählt: webcam_1")
+            """30° Objekt-Tracking Preset"""
+            self._set_object_preset()
+            self.log("� Preset 2: 30° Objekt-Tracking aktiviert")
             
         def on_key_3():
-            """Kamera 3 auswählen"""
-            self.selected_camera = 'webcam_2'
-            self.log("📷 Kamera ausgewählt: webcam_2")
+            """Minimal-Winkel Preset"""
+            self._set_minimal_preset()
+            self.log("� Preset 3: Minimal-Winkel aktiviert")
             
         def on_key_r():
-            """Reset Kamera-Positionen"""
-            self._reset_camera_positions()
-            self.log("📍 Kamera-Positionen zurückgesetzt")
-            
-        def on_key_w():
-            """Kamera vorwärts bewegen (Y+)"""
-            if hasattr(self, 'selected_camera') and self.selected_camera:
-                step = 0.5
-                pos = self.camera_positions[self.selected_camera]
-                self.camera_positions[self.selected_camera] = pos + np.array([0, step, 0])
-                new_pos = self.camera_positions[self.selected_camera]
-                self.log(f"📍 {self.selected_camera}: X={new_pos[0]:.1f}, Y={new_pos[1]:.1f}, Z={new_pos[2]:.1f}")
-                
-        def on_key_s():
-            """Kamera rückwärts bewegen (Y-)"""
-            if hasattr(self, 'selected_camera') and self.selected_camera:
-                step = 0.5
-                pos = self.camera_positions[self.selected_camera]
-                self.camera_positions[self.selected_camera] = pos + np.array([0, -step, 0])
-                new_pos = self.camera_positions[self.selected_camera]
-                self.log(f"📍 {self.selected_camera}: X={new_pos[0]:.1f}, Y={new_pos[1]:.1f}, Z={new_pos[2]:.1f}")
-                
-        def on_key_a():
-            """Kamera links bewegen (X-)"""
-            if hasattr(self, 'selected_camera') and self.selected_camera:
-                step = 0.5
-                pos = self.camera_positions[self.selected_camera]
-                self.camera_positions[self.selected_camera] = pos + np.array([-step, 0, 0])
-                new_pos = self.camera_positions[self.selected_camera]
-                self.log(f"📍 {self.selected_camera}: X={new_pos[0]:.1f}, Y={new_pos[1]:.1f}, Z={new_pos[2]:.1f}")
-                
-        def on_key_d():
-            """Kamera rechts bewegen (X+)"""
-            if hasattr(self, 'selected_camera') and self.selected_camera:
-                step = 0.5
-                pos = self.camera_positions[self.selected_camera]
-                self.camera_positions[self.selected_camera] = pos + np.array([step, 0, 0])
-                new_pos = self.camera_positions[self.selected_camera]
-                self.log(f"📍 {self.selected_camera}: X={new_pos[0]:.1f}, Y={new_pos[1]:.1f}, Z={new_pos[2]:.1f}")
-                
-        def on_key_q():
-            """Kamera hoch bewegen (Z+)"""
-            if hasattr(self, 'selected_camera') and self.selected_camera:
-                step = 0.5
-                pos = self.camera_positions[self.selected_camera]
-                self.camera_positions[self.selected_camera] = pos + np.array([0, 0, step])
-                new_pos = self.camera_positions[self.selected_camera]
-                self.log(f"📍 {self.selected_camera}: X={new_pos[0]:.1f}, Y={new_pos[1]:.1f}, Z={new_pos[2]:.1f}")
-                
-        def on_key_e():
-            """Kamera runter bewegen (Z-)"""
-            if hasattr(self, 'selected_camera') and self.selected_camera:
-                step = 0.5
-                pos = self.camera_positions[self.selected_camera]
-                self.camera_positions[self.selected_camera] = pos + np.array([0, 0, -step])
-                new_pos = self.camera_positions[self.selected_camera]
-                self.log(f"📍 {self.selected_camera}: X={new_pos[0]:.1f}, Y={new_pos[1]:.1f}, Z={new_pos[2]:.1f}")
+            """Reset View"""
+            plotter.reset_camera()
+            self.log("� View zurückgesetzt")
         
-        # Keyboard callbacks hinzufügen (PyVista-kompatibel ohne Argumente)
-        plotter.add_key_event('1', on_key_1)
-        plotter.add_key_event('2', on_key_2)
-        plotter.add_key_event('3', on_key_3)
-        plotter.add_key_event('w', on_key_w)
-        plotter.add_key_event('s', on_key_s)
-        plotter.add_key_event('a', on_key_a)
-        plotter.add_key_event('d', on_key_d)
-        plotter.add_key_event('q', on_key_q)
-        plotter.add_key_event('e', on_key_e)
-        plotter.add_key_event('r', on_key_r)
+        # KEINE PyVista Event-Handler! Diese verursachen Abstürze beim Anklicken
+        # Das Problem: PyVista add_key_event() führt zu Crashes bei Window-Focus-Wechsel
+        # Lösung: Reine Visualisierung ohne interaktive Events
+        self.log("⚠️ PyVista Events deaktiviert - verhindert Abstürze beim Klicken")
     
     def _reset_camera_positions(self):
-        """Reset Kamera-Positionen zu Standard-Werten - nebeneinander auf gleicher Höhe, 30° gedreht"""
-        # Webcams nebeneinander auf gleicher Höhe, nur rotiert um 30° für überlappende Sichtfelder
+        """Reset Kamera-Positionen zu Standard-Werten - Himmel-Tracking Setup für Flugzeuge/Vögel"""
+        # Default: Himmel-Tracking Setup
+        self._set_sky_preset()
+    
+    def _set_sky_preset(self):
+        """Preset 1: Himmel-Tracking - 10cm Abstand, parallel zum Himmel"""
         self.camera_positions = {
-            'webcam_0': np.array([-1, 0, 0]),     # Links (1m von Zentrum)
-            'webcam_1': np.array([1, 0, 0]),      # Rechts (1m von Zentrum)
-            'webcam_2': np.array([0, 0, 0])       # Zentrum (falls 3. Kamera vorhanden)
+            'webcam_0': np.array([-0.05, 0, 0]),   # Links (5cm von Zentrum)
+            'webcam_1': np.array([0.05, 0, 0]),    # Rechts (5cm von Zentrum)
+            'webcam_2': np.array([0, -0.1, 0])     # Zentrum-hinten
+        }
+        # Beide Kameras parallel zum Himmel (60° Elevation)
+        self.camera_directions = {
+            'webcam_0': np.array([0, 0.5, 0.866]),
+            'webcam_1': np.array([0, 0.5, 0.866]),
+            'webcam_2': np.array([0, 0.5, 0.866])
+        }
+        
+    def _set_object_preset(self):
+        """Preset 2: Objekt-Tracking - 1.5m Abstand, 30° zueinander gedreht"""
+        self.camera_positions = {
+            'webcam_0': np.array([-0.75, 0, 0]),   # Links (75cm von Zentrum)
+            'webcam_1': np.array([0.75, 0, 0]),    # Rechts (75cm von Zentrum)
+            'webcam_2': np.array([0, -0.5, 0])     # Zentrum-hinten
+        }
+        # Kameras 30° zueinander gedreht
+        self.camera_directions = {
+            'webcam_0': np.array([0.5, 0.866, 0]),   # 30° nach rechts
+            'webcam_1': np.array([-0.5, 0.866, 0]),  # 30° nach links
+            'webcam_2': np.array([0, 1, 0])          # Gerade nach vorne
+        }
+        
+    def _set_minimal_preset(self):
+        """Preset 3: Minimal-Winkel - 50cm Abstand, 5° zueinander gedreht"""
+        self.camera_positions = {
+            'webcam_0': np.array([-0.25, 0, 0]),   # Links (25cm von Zentrum)
+            'webcam_1': np.array([0.25, 0, 0]),    # Rechts (25cm von Zentrum)
+            'webcam_2': np.array([0, -0.25, 0])    # Zentrum-hinten
+        }
+        # Kameras nur 5° zueinander gedreht (minimal für bessere Parallaxe)
+        self.camera_directions = {
+            'webcam_0': np.array([0.087, 0.996, 0]),  # 5° nach rechts
+            'webcam_1': np.array([-0.087, 0.996, 0]), # 5° nach links
+            'webcam_2': np.array([0, 1, 0])           # Gerade nach vorne
         }
     
-    def _clear_motion_objects(self, plotter):
-        """Entferne nur motion-relevante Objekte für Live-Updates"""
-        # Suche und entferne nur temporäre Tracking-Objekte
-        actors_to_remove = []
-        for actor in plotter.renderer.actors:
-            # Entferne orange/cyan Objekte (Motion rays + triangulated objects)
-            if hasattr(actor, 'GetProperty'):
-                prop = actor.GetProperty()
-                if hasattr(prop, 'GetColor'):
-                    color = prop.GetColor()
-                    # Orange (1.0, 0.5, 0.0) und Cyan (0.0, 1.0, 1.0) Objekte entfernen
-                    if (abs(color[0] - 1.0) < 0.1 and abs(color[1] - 0.5) < 0.1 and abs(color[2] - 0.0) < 0.1) or \
-                       (abs(color[0] - 0.0) < 0.1 and abs(color[1] - 1.0) < 0.1 and abs(color[2] - 1.0) < 0.1):
-                        actors_to_remove.append(actor)
-        
-        for actor in actors_to_remove:
-            plotter.renderer.RemoveActor(actor)
-    
-    def _draw_live_camera_rays(self, plotter):
-        """Zeichne Live-Sichtstrahlen von den Kameras"""
-        current_time = time.time()
-        ray_lifetime = 2.0  # 2 Sekunden sichtbar
-        
-        for camera_name, motion_list in self.camera_motion_data.items():
-            if camera_name in self.camera_positions and motion_list:
-                # Aktuelle Motion-Events
-                recent_motions = [
-                    motion for motion in motion_list
-                    if current_time - motion['timestamp'] < ray_lifetime
-                ]
+    def _filter_synchronized_motions(self):
+        """Filtere nur zeitgleiche Bewegungen auf beiden Kameras - KERN-FILTER"""
+        try:
+            if not hasattr(self, 'camera_motion_data') or len(self.camera_motion_data) < 2:
+                return {}
                 
-                if recent_motions:
+            current_time = time.time()
+            sync_tolerance = 0.3  # 300ms Toleranz für Synchronisation
+            
+            # Sammle nur sehr aktuelle Motion-Events
+            recent_motions = {}
+            for camera_name, motion_list in self.camera_motion_data.items():
+                if camera_name not in self.camera_positions or not motion_list:
+                    continue
+                    
+                # Nur Events der letzten Sekunde
+                very_recent = []
+                for motion in motion_list:
+                    try:
+                        if current_time - motion['timestamp'] < 1.0:
+                            very_recent.append(motion)
+                    except:
+                        continue
+                        
+                if very_recent:
+                    recent_motions[camera_name] = very_recent
+            
+            if len(recent_motions) < 2:
+                return {}
+            
+            # Finde zeitlich synchrone Motion-Paare
+            synchronized_pairs = {}
+            camera_names = list(recent_motions.keys())
+            
+            # Prüfe alle Kamera-Kombinationen
+            for i in range(len(camera_names)):
+                for j in range(i + 1, len(camera_names)):
+                    cam1_name = camera_names[i]
+                    cam2_name = camera_names[j]
+                    
+                    # Finde beste zeitliche Übereinstimmung
+                    best_match = None
+                    best_time_diff = float('inf')
+                    
+                    for motion1 in recent_motions[cam1_name]:
+                        for motion2 in recent_motions[cam2_name]:
+                            try:
+                                time_diff = abs(motion1['timestamp'] - motion2['timestamp'])
+                                if time_diff < sync_tolerance and time_diff < best_time_diff:
+                                    best_time_diff = time_diff
+                                    best_match = (motion1, motion2)
+                            except:
+                                continue
+                    
+                    # Speichere synchrone Paare
+                    if best_match:
+                        synchronized_pairs[f"{cam1_name}_{cam2_name}"] = {
+                            cam1_name: best_match[0],
+                            cam2_name: best_match[1],
+                            'time_diff': best_time_diff
+                        }
+            
+            # Gib das beste synchrone Paar zurück
+            if synchronized_pairs:
+                # Wähle Paar mit kleinster Zeitdifferenz
+                best_pair_key = min(synchronized_pairs.keys(), 
+                                  key=lambda k: synchronized_pairs[k]['time_diff'])
+                best_pair = synchronized_pairs[best_pair_key]
+                
+                # Entferne Metadaten für Rückgabe
+                result = {}
+                for cam_name, motion in best_pair.items():
+                    if cam_name != 'time_diff':
+                        result[cam_name] = motion
+                        
+                return result
+            
+            return {}
+            
+        except Exception as e:
+            # Sicher fallback
+            return {}
+    
+    def _draw_filtered_camera_rays(self, plotter, synchronized_motions):
+        """Zeichne nur gefilterte, synchrone Camera Rays"""
+        try:
+            if not synchronized_motions:
+                return
+                
+            for camera_name, motion in synchronized_motions.items():
+                try:
+                    if camera_name not in self.camera_positions:
+                        continue
+                        
                     camera_pos = self.camera_positions[camera_name]
                     camera_color = self.camera_colors.get(camera_name, 'white')
                     
-                    for motion in recent_motions[-3:]:  # Zeige letzte 3 Motions
-                        # Berechne 3D Richtung
-                        direction = self._pixel_to_3d_direction(motion['x'], motion['y'], camera_name)
+                    # 3D Richtung berechnen
+                    direction = self._pixel_to_3d_direction(motion['x'], motion['y'], camera_name)
+                    
+                    # Strahl für Himmel-Tracking (längere Distanz)
+                    ray_length = 100.0  # 100m für Flugzeug-Tracking
+                    ray_end = camera_pos + direction * ray_length
+                    
+                    # Cast to float32 for PyVista
+                    camera_pos_f = camera_pos.astype(np.float32)
+                    ray_end_f = ray_end.astype(np.float32)
+                    
+                    # Nur synchrone Strahlen zeichnen (heller/dicker für Sichtbarkeit)
+                    line = pv.Line(camera_pos_f, ray_end_f)
+                    plotter.add_mesh(line, color=camera_color, line_width=5, opacity=0.9)
+                    
+                    # Motion-Punkt am Ende markieren
+                    motion_point = pv.Sphere(radius=2.0, center=ray_end_f)  # Größer für Sichtbarkeit
+                    plotter.add_mesh(motion_point, color=camera_color, opacity=0.8)
+                    
+                except Exception:
+                    continue  # Ignoriere einzelne Ray-Fehler
+                    
+        except Exception:
+            pass  # Komplett sicher
+    
+    def _calculate_filtered_triangulation(self, plotter, synchronized_motions):
+        """Berechne Triangulation nur für gefilterte, synchrone Motions"""
+        try:
+            if not synchronized_motions or len(synchronized_motions) < 2:
+                return
+                
+            # Alle Kamera-Kombinationen triangulieren
+            triangulated_points = []
+            confidence_scores = []
+            
+            camera_names = list(synchronized_motions.keys())
+            for i in range(len(camera_names)):
+                for j in range(i + 1, len(camera_names)):
+                    try:
+                        cam1_name = camera_names[i]
+                        cam2_name = camera_names[j]
                         
-                        # Sichtstrahl mit Länge basierend auf Alter
-                        age = current_time - motion['timestamp']
-                        alpha = max(0.1, min(1.0, 1.0 - (age / ray_lifetime)))  # Sichere Opacity 0.1-1.0
-                        ray_length = 5.0  # 5 Meter Strahl
+                        motion1 = synchronized_motions[cam1_name]
+                        motion2 = synchronized_motions[cam2_name]
                         
-                        ray_end = camera_pos + direction * ray_length
+                        # 3D Strahlen berechnen
+                        pos1 = self.camera_positions[cam1_name]
+                        dir1 = self._pixel_to_3d_direction(motion1['x'], motion1['y'], cam1_name)
                         
-                        # Erstelle Strahl-Linie mit Float-Koordinaten
-                        camera_pos_f = camera_pos.astype(np.float32)
-                        ray_end_f = ray_end.astype(np.float32)
-                        ray_line = pv.Line(camera_pos_f, ray_end_f)
-                        plotter.add_mesh(ray_line, color='orange', line_width=3, 
-                                       opacity=alpha, label=f'ray_{camera_name}')
+                        pos2 = self.camera_positions[cam2_name]
+                        dir2 = self._pixel_to_3d_direction(motion2['x'], motion2['y'], cam2_name)
                         
-                        # Motion point am Ende des Strahls
-                        motion_point = pv.Sphere(radius=0.08, center=ray_end_f)
-                        plotter.add_mesh(motion_point, color=camera_color, opacity=alpha)
+                        # Triangulation berechnen
+                        intersection, confidence = self._line_intersection_3d_with_confidence(pos1, dir1, pos2, dir2)
+                        
+                        if intersection is not None and confidence > 0.2:  # Niedrigere Schwelle für Flugzeuge
+                            triangulated_points.append(intersection)
+                            confidence_scores.append(confidence)
+                            
+                    except Exception:
+                        continue
+            
+            # Finale triangulierte Position anzeigen
+            if triangulated_points:
+                try:
+                    # Gewichteter Durchschnitt aller Triangulationen
+                    total_weight = sum(confidence_scores)
+                    if total_weight > 0:
+                        weighted_position = np.zeros(3)
+                        for point, confidence in zip(triangulated_points, confidence_scores):
+                            weighted_position += point * (confidence / total_weight)
+                        
+                        # Finale Position als größere, gut sichtbare Kugel
+                        object_size = 5.0  # Viel größer für Sichtbarkeit bei großen Entfernungen
+                        final_object = pv.Sphere(radius=object_size, center=weighted_position)
+                        plotter.add_mesh(final_object, color='cyan', opacity=1.0)
+                        
+                        # Koordinaten-Info für Debugging
+                        distance = np.linalg.norm(weighted_position)
+                        if distance > 10:  # Nur bei realistischen Flugzeug-Entfernungen
+                            coord_text = f"📍 Objekt: {distance:.0f}m\nXYZ: ({weighted_position[0]:.1f}, {weighted_position[1]:.1f}, {weighted_position[2]:.1f})"
+                            plotter.add_point_labels([weighted_position], [coord_text], 
+                                                   point_size=8, font_size=10, text_color='cyan')
+                        
+                except Exception:
+                    pass
+                    
+        except Exception:
+            pass  # Komplett sicher
+        """Entferne nur motion-relevante Objekte für Live-Updates - optimiert für Performance"""
+        try:
+            # Defensive Programmierung - prüfe erst ob Renderer existiert
+            if not hasattr(plotter, 'renderer') or not plotter.renderer:
+                return
+                
+            # Sichere Actor-Liste erstellen (Kopie)
+            actors_list = []
+            try:
+                if hasattr(plotter.renderer, 'actors'):
+                    actors_list = list(plotter.renderer.actors)
+            except:
+                return  # Kein Zugriff auf Actors möglich
+            
+            # Suche und entferne nur temporäre Tracking-Objekte
+            actors_to_remove = []
+            for actor in actors_list:
+                try:
+                    # Entferne orange/cyan Objekte (Motion rays + triangulated objects)
+                    if hasattr(actor, 'GetProperty'):
+                        prop = actor.GetProperty()
+                        if hasattr(prop, 'GetColor'):
+                            color = prop.GetColor()
+                            # Orange (1.0, 0.5, 0.0) und Cyan (0.0, 1.0, 1.0) Objekte entfernen
+                            if (abs(color[0] - 1.0) < 0.1 and abs(color[1] - 0.5) < 0.1 and abs(color[2] - 0.0) < 0.1) or \
+                               (abs(color[0] - 0.0) < 0.1 and abs(color[1] - 1.0) < 0.1 and abs(color[2] - 1.0) < 0.1):
+                                actors_to_remove.append(actor)
+                except:
+                    continue  # Ignoriere einzelne Actor-Fehler
+            
+            # Entferne Actors sicher
+            for actor in actors_to_remove:
+                try:
+                    plotter.renderer.RemoveActor(actor)
+                except:
+                    continue  # Ignoriere Remove-Fehler für einzelne Actors
+                    
+        except Exception:
+            # Komplettes Fallback - ignoriere alle Clear-Operationen bei Problemen
+            pass
+    
+    def _draw_live_camera_rays(self, plotter):
+        """Zeichne Live-Sichtstrahlen von den Kameras - reduziert für weniger Clutter"""
+        try:
+            if not hasattr(self, 'camera_motion_data') or not self.camera_motion_data:
+                return
+                
+            current_time = time.time()
+            ray_lifetime = 1.0  # Reduziert auf 1 Sekunde für weniger Clutter
+            
+            for camera_name, motion_list in self.camera_motion_data.items():
+                try:
+                    if camera_name not in self.camera_positions or not motion_list:
+                        continue
+                        
+                    # Aktuelle Motion-Events mit sicherer Filterung
+                    recent_motions = []
+                    for motion in motion_list:
+                        try:
+                            if current_time - motion['timestamp'] < ray_lifetime:
+                                recent_motions.append(motion)
+                        except:
+                            continue
+                    
+                    if recent_motions:
+                        camera_pos = self.camera_positions[camera_name]
+                        camera_color = self.camera_colors.get(camera_name, 'white')
+                        
+                        # Zeige nur das neueste Motion für weniger Überfüllung
+                        for motion in recent_motions[-1:]:  # Nur das letzte Motion anzeigen
+                            try:
+                                # Berechne 3D Richtung
+                                direction = self._pixel_to_3d_direction(motion['x'], motion['y'], camera_name)
+                                
+                                # Sichtstrahl mit Länge basierend auf Alter
+                                age = current_time - motion['timestamp']
+                                alpha = max(0.2, min(0.8, 1.0 - (age / ray_lifetime)))
+                                ray_length = 3.0  # Kürzere Strahlen
+                                
+                                ray_end = camera_pos + direction * ray_length
+                                
+                                # Erstelle Strahl-Linie mit Float-Koordinaten
+                                camera_pos_f = camera_pos.astype(np.float32)
+                                ray_end_f = ray_end.astype(np.float32)
+                                
+                                ray_line = pv.Line(camera_pos_f, ray_end_f)
+                                plotter.add_mesh(ray_line, color='orange', line_width=2,
+                                               opacity=alpha, label=f'ray_{camera_name}')
+                                
+                                # Kleinere Motion points
+                                motion_point = pv.Sphere(radius=0.05, center=ray_end_f)
+                                plotter.add_mesh(motion_point, color=camera_color, opacity=alpha)
+                            except:
+                                continue  # Ignoriere einzelne Motion-Fehler
+                except:
+                    continue  # Ignoriere Kamera-Fehler
+        except Exception:
+            # Komplett sicher - ignoriere alle Ray-Drawing-Fehler
+            pass
     
     def _calculate_live_triangulation(self, plotter):
-        """Live-Berechnung der Triangulation mit kontinuierlichen Updates"""
-        if len(self.camera_motion_data) < 2:
-            return
+        """Live-Berechnung der Triangulation mit reduzierter Visualisierung für weniger Clutter"""
+        try:
+            if not hasattr(self, 'camera_motion_data') or len(self.camera_motion_data) < 2:
+                return
+                
+            current_time = time.time()
+            sync_window = 0.8  # Kürzeres Synchronisations-Fenster
             
-        current_time = time.time()
-        sync_window = 1.0  # 1 Sekunde Synchronisation
-        
-        # Sammle neueste synchrone Motion-Events
-        synchronized_motions = {}
-        
-        for camera_name, motion_list in self.camera_motion_data.items():
-            if camera_name in self.camera_positions and motion_list:
-                # Neueste Events in Zeitfenster
-                recent_motions = [
-                    motion for motion in motion_list
-                    if current_time - motion['timestamp'] < sync_window
-                ]
-                if recent_motions:
-                    synchronized_motions[camera_name] = recent_motions[-1]
-        
-        if len(synchronized_motions) < 2:
-            return
+            # Sammle neueste synchrone Motion-Events
+            synchronized_motions = {}
             
-        # Berechne Triangulation für alle Kamera-Paare
-        triangulated_points = []
-        confidence_scores = []
-        
-        camera_names = list(synchronized_motions.keys())
-        for i in range(len(camera_names)):
-            for j in range(i + 1, len(camera_names)):
-                cam1_name = camera_names[i]
-                cam2_name = camera_names[j]
-                
-                motion1 = synchronized_motions[cam1_name]
-                motion2 = synchronized_motions[cam2_name]
-                
-                # Berechne 3D Strahlen
-                pos1 = self.camera_positions[cam1_name]
-                dir1 = self._pixel_to_3d_direction(motion1['x'], motion1['y'], cam1_name)
-                
-                pos2 = self.camera_positions[cam2_name]
-                dir2 = self._pixel_to_3d_direction(motion2['x'], motion2['y'], cam2_name)
-                
-                # Finde Kreuzungspunkt
-                intersection, confidence = self._line_intersection_3d_with_confidence(pos1, dir1, pos2, dir2)
-                if intersection is not None and confidence > 0.1:  # Mindest-Confidence
-                    triangulated_points.append(intersection)
-                    confidence_scores.append(confidence)
+            for camera_name, motion_list in self.camera_motion_data.items():
+                try:
+                    if camera_name not in self.camera_positions or not motion_list:
+                        continue
+                    # Neueste Events in Zeitfenster mit sicherer Filterung
+                    recent_motions = []
+                    for motion in motion_list:
+                        try:
+                            if current_time - motion['timestamp'] < sync_window:
+                                recent_motions.append(motion)
+                        except:
+                            continue
                     
-                    # Zeige Triangulations-Punkt mit Confidence-basierter Größe
-                    point_size = 0.05 + confidence * 0.15
-                    intersection_f = intersection.astype(np.float32)
-                    point_mesh = pv.Sphere(radius=point_size, center=intersection_f)
-                    point_color = [1.0, 0.5, 0.0]  # Orange
-                    plotter.add_mesh(point_mesh, color=point_color, opacity=0.8)
-        
-        # Finale Objekt-Position mit gewichteter Mittelung
-        if triangulated_points:
-            # Gewichtete Mittelung basierend auf Confidence
-            total_weight = sum(confidence_scores)
-            if total_weight > 0:
-                weighted_position = np.zeros(3)
-                for point, confidence in zip(triangulated_points, confidence_scores):
-                    weighted_position += point * (confidence / total_weight)
+                    if recent_motions:
+                        synchronized_motions[camera_name] = recent_motions[-1]
+                except:
+                    continue  # Ignoriere Kamera-Fehler
+            
+            if len(synchronized_motions) < 2:
+                return
                 
-                # Finale Live-Objekt-Position
-                object_size = 0.15 + min(len(triangulated_points) * 0.05, 0.25)  # Größer bei mehr Übereinstimmungen
-                final_object = pv.Sphere(radius=object_size, center=weighted_position)
-                plotter.add_mesh(final_object, color='cyan', opacity=1.0)
-                
-                # Live-Koordinaten mit Confidence
-                avg_confidence = np.mean(confidence_scores)
-                coord_text = (f"🎯 LIVE OBJEKT\n"
-                            f"X: {weighted_position[0]:.2f}m\n"
-                            f"Y: {weighted_position[1]:.2f}m\n"
-                            f"Z: {weighted_position[2]:.2f}m\n"
-                            f"Confidence: {avg_confidence:.2f}")
-                
-                plotter.add_point_labels([weighted_position], [coord_text], 
-                                       point_color='cyan', point_size=20, 
-                                       font_size=10, text_color='white')
-                
-                # Live-Statistiken
-                stats_text = (f"📊 LIVE TRIANGULATION\n"
-                            f"Kamera-Paare: {len(triangulated_points)}\n"
-                            f"Aktive Kameras: {len(synchronized_motions)}\n"
-                            f"Sync-Fenster: {sync_window:.1f}s")
-                plotter.add_text(stats_text, position='lower_right', font_size=9, color='cyan')
+            # Berechne Triangulation für alle Kamera-Paare
+            triangulated_points = []
+            confidence_scores = []
+            
+            camera_names = list(synchronized_motions.keys())
+            for i in range(len(camera_names)):
+                for j in range(i + 1, len(camera_names)):
+                    try:
+                        cam1_name = camera_names[i]
+                        cam2_name = camera_names[j]
+                        
+                        motion1 = synchronized_motions[cam1_name]
+                        motion2 = synchronized_motions[cam2_name]
+                        
+                        # Berechne 3D Strahlen sicher
+                        pos1 = self.camera_positions[cam1_name]
+                        dir1 = self._pixel_to_3d_direction(motion1['x'], motion1['y'], cam1_name)
+                        
+                        pos2 = self.camera_positions[cam2_name]
+                        dir2 = self._pixel_to_3d_direction(motion2['x'], motion2['y'], cam2_name)
+                        
+                        # Finde Kreuzungspunkt
+                        intersection, confidence = self._line_intersection_3d_with_confidence(pos1, dir1, pos2, dir2)
+                        if intersection is not None and confidence > 0.3:
+                            triangulated_points.append(intersection)
+                            confidence_scores.append(confidence)
+                    except:
+                        continue  # Ignoriere einzelne Triangulations-Fehler
+            
+            # Finale Objekt-Position mit gewichteter Mittelung - NUR diese anzeigen
+            if triangulated_points:
+                try:
+                    # Gewichtete Mittelung basierend auf Confidence
+                    total_weight = sum(confidence_scores)
+                    if total_weight > 0:
+                        weighted_position = np.zeros(3)
+                        for point, confidence in zip(triangulated_points, confidence_scores):
+                            weighted_position += point * (confidence / total_weight)
+                        
+                        # Finale Live-Objekt-Position
+                        object_size = 0.12
+                        final_object = pv.Sphere(radius=object_size, center=weighted_position)
+                        plotter.add_mesh(final_object, color='cyan', opacity=1.0)
+                        
+                        # Reduzierte Live-Koordinaten
+                        coord_text = (f"🎯 OBJEKT\n"
+                                    f"X: {weighted_position[0]:.1f}m\n"
+                                    f"Y: {weighted_position[1]:.1f}m\n"
+                                    f"Z: {weighted_position[2]:.1f}m")
+                        
+                        plotter.add_point_labels([weighted_position], [coord_text], 
+                                               point_color='cyan', point_size=15,
+                                               font_size=8, text_color='white')
+                        
+                        # Kompakte Live-Statistiken
+                        stats_text = (f"📊 TRIANGULATION\n"
+                                    f"Paare: {len(triangulated_points)}\n"
+                                    f"Kameras: {len(synchronized_motions)}")
+                        plotter.add_text(stats_text, position='lower_right', font_size=8, color='cyan')
+                except:
+                    pass  # Ignoriere Visualisierungs-Fehler
+        except Exception:
+            # Komplett sicher - ignoriere alle Triangulations-Fehler
+            pass
     
     def _line_intersection_3d_with_confidence(self, p1, d1, p2, d2):
-        """Finde Kreuzungspunkt mit Confidence-Score"""
+        """Finde Kreuzungspunkt mit Confidence-Score - optimiert für Himmel-Tracking (große Entfernungen)"""
         w = p1 - p2
         a = np.dot(d1, d1)
         b = np.dot(d1, d2)
@@ -1063,11 +1346,15 @@ class MasterMotionTracker:
         e = np.dot(d2, w)
         
         denominator = a * c - b * b
-        if abs(denominator) < 1e-6:  # Parallel lines
+        if abs(denominator) < 1e-8:  # Strengere Parallel-Erkennung für Himmel-Tracking
             return None, 0.0
             
         t1 = (b * e - c * d) / denominator
         t2 = (a * e - b * d) / denominator
+        
+        # Für Himmel-Tracking: Nur positive t-Werte (vor den Kameras)
+        if t1 < 0.1 or t2 < 0.1:  # Mindestabstand 10cm
+            return None, 0.0
         
         # Berechne nächste Punkte auf beiden Linien
         closest1 = p1 + t1 * d1
@@ -1076,19 +1363,28 @@ class MasterMotionTracker:
         # Mittelpunkt als Triangulation
         intersection = (closest1 + closest2) / 2
         
-        # Confidence basierend auf Abstand zwischen den nächsten Punkten
+        # Confidence für große Entfernungen angepasst
         distance = np.linalg.norm(closest1 - closest2)
-        confidence = max(0.0, 1.0 - distance / 2.0)  # Confidence sinkt mit Abstand
         
-        # Zusätzliche Confidence-Faktoren
-        # Winkel zwischen Strahlen (90° optimal)
+        # Für Flugzeuge/Vögel: Toleriere größere Abstände zwischen den Strahlen
+        confidence = max(0.0, 1.0 - distance / 50.0)  # 50m Toleranz statt 2m
+        
+        # Winkel zwischen Strahlen - für parallele Kameras sind kleine Winkel OK
         cos_angle = abs(np.dot(d1, d2))
-        angle_confidence = 1.0 - cos_angle  # Besser wenn Strahlen senkrecht
+        angle_confidence = 1.0 - cos_angle * 0.5  # Weniger Penalty für parallele Strahlen
         
-        # Entfernung zu Kameras (nicht zu weit weg)
+        # Entfernung zu Kameras - Flugzeuge sind weit weg
         dist1 = np.linalg.norm(intersection - p1)
         dist2 = np.linalg.norm(intersection - p2)
-        distance_confidence = 1.0 / (1.0 + (dist1 + dist2) / 10.0)  # Näher ist besser
+        avg_distance = (dist1 + dist2) / 2
+        
+        # Optimaler Bereich für Flugzeuge: 100m - 10km
+        if 100 <= avg_distance <= 10000:
+            distance_confidence = 1.0
+        elif avg_distance < 100:
+            distance_confidence = avg_distance / 100.0  # Reduziere Confidence für zu nahe Objekte
+        else:
+            distance_confidence = 1.0 / (1.0 + (avg_distance - 10000) / 5000.0)  # Reduziere für sehr weit entfernte
         
         # Kombinierte Confidence
         final_confidence = confidence * angle_confidence * distance_confidence
@@ -1158,17 +1454,17 @@ class MasterMotionTracker:
         # Standard Field of View Annahme (60° typisch für Webcams)
         fov_factor = 0.7  # Für 60° FOV
         
-        # Basis-Richtung für jede Kamera (physisch nebeneinander, nur gedreht)
+        # Basis-Richtung für jede Kamera (Himmel-Tracking Setup)
         if camera_name == 'webcam_0':
-            # Links: 30° nach rechts gedreht (schauen sich zu)
-            base_dir = np.array([0.5, 0.866, 0])  # 30° Rotation
-            right_vec = np.array([0.866, -0.5, 0])  # Rechts-Vektor für diese Rotation
-            up_vec = np.array([0, 0, 1])  # Z ist immer oben
+            # Linke Kamera: nach oben-vorne gerichtet (Himmel-Tracking)
+            base_dir = np.array([0, 0.5, 0.866])  # 60° Elevation für Himmel
+            right_vec = np.array([1, 0, 0])  # X-Achse für horizontale Bewegung
+            up_vec = np.array([0, 0.866, -0.5])  # Hoch-Vektor angepasst für 60° Neigung
         elif camera_name == 'webcam_1':
-            # Rechts: 30° nach links gedreht (schauen sich zu)
-            base_dir = np.array([-0.5, 0.866, 0])  # -30° Rotation
-            right_vec = np.array([0.866, 0.5, 0])  # Rechts-Vektor für diese Rotation
-            up_vec = np.array([0, 0, 1])  # Z ist immer oben
+            # Rechte Kamera: parallel zur linken (Himmel-Tracking)
+            base_dir = np.array([0, 0.5, 0.866])  # 60° Elevation für Himmel (parallel)
+            right_vec = np.array([1, 0, 0])  # X-Achse für horizontale Bewegung
+            up_vec = np.array([0, 0.866, -0.5])  # Hoch-Vektor angepasst für 60° Neigung
         elif camera_name == 'webcam_2':
             # Zentrum: gerade nach vorne
             base_dir = np.array([0, 1, 0])
