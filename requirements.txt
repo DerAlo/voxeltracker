@@ -8,6 +8,9 @@ Pillow>=8.0.0
 # 3D Visualization
 pyvista>=0.40.0
 
+# Video streaming support
+yt-dlp>=2023.0.0
+
 # GUI (meist schon in Python enthalten)
 # tkinter - normalerweise bereits installiert
 

@@ -867,19 +867,29 @@ class MultiWebcamGUI:
                 messagebox.showinfo("Info", "No motion data to visualize yet. Start tracking first!")
                 return
                 
-            # Create PyVista plotter
-            plotter = pv.Plotter(title="3D Motion Visualization", window_size=(800, 600))
+            # Create PyVista plotter with better colors
+            plotter = pv.Plotter(title="🎯 3D Motion Visualization - Colorful Edition", window_size=(1000, 700))
+            
+            # Set BRIGHT background instead of black
+            plotter.set_background("lightgray")
             
             # Create point cloud
             point_cloud = pv.PolyData(points)
             point_cloud["intensity"] = intensities
             
-            # Add to plotter with color mapping
+            # Add to plotter with VIBRANT color mapping
             plotter.add_mesh(point_cloud, 
                            scalars="intensity",
-                           cmap="hot",
-                           point_size=8,
-                           render_points_as_spheres=True)
+                           cmap="viridis",  # Beautiful blue to yellow gradient
+                           point_size=15,   # Even larger points
+                           render_points_as_spheres=True,
+                           opacity=0.95)
+            
+            # Add colorbar for better understanding
+            plotter.add_scalar_bar(title="Motion Intensity", 
+                                 n_labels=6, 
+                                 color='black',
+                                 title_font_size=12)
             
             # Set camera position manually for better view
             # Alternative approaches if the first one fails
@@ -895,8 +905,29 @@ class MultiWebcamGUI:
                     # Last fallback: simple camera positioning
                     plotter.camera_position = [(8, 8, 8), (0, 0, 0), (0, 0, 1)]
             
-            plotter.show_grid()
-            plotter.add_axes()
+            # Add enhanced grid and axes
+            plotter.show_grid(color='darkgray', line_width=2)
+            plotter.add_axes(color='black', line_width=4)
+            
+            # Add informative text with better styling
+            plotter.add_text("🌈 ENHANCED 3D Motion Tracking\n"
+                           "• Viridis Colors: Low (Blue) → High (Yellow)\n"
+                           "• Mouse Drag: Rotate View\n"
+                           "• Mouse Wheel: Zoom In/Out\n"
+                           "• Right Drag: Pan View\n"
+                           "• Enhanced Visibility & Colors!",
+                           position='upper_left', 
+                           font_size=11, 
+                           color='darkblue',
+                           background_color='white',
+                           background_opacity=0.8)
+            
+            # Enhanced lighting for better visibility  
+            try:
+                plotter.enable_shadows()
+                plotter.enable_anti_aliasing()
+            except:
+                pass  # Some systems might not support these features
             
             # Show in separate window (non-blocking)
             plotter.show(interactive=True)

@@ -482,24 +482,43 @@ class MultiWebcamGUI:
                 messagebox.showinfo("Info", "No motion data to visualize yet. Start tracking first!")
                 return
                 
-            # Create PyVista plotter
-            plotter = pv.Plotter(title="3D Motion Visualization")
+            # Create PyVista plotter with better colors
+            plotter = pv.Plotter(title="🎯 3D Motion Visualization - Verbessert!")
+            
+            # Set BRIGHT background instead of black
+            plotter.set_background("white")
             
             # Create point cloud
             point_cloud = pv.PolyData(points)
             point_cloud["intensity"] = intensities
             
-            # Add to plotter with color mapping
+            # Add to plotter with VIBRANT color mapping
             plotter.add_mesh(point_cloud, 
                            scalars="intensity",
-                           cmap="hot",
-                           point_size=8,
-                           render_points_as_spheres=True)
+                           cmap="plasma",  # Vibrant colors: purple to yellow
+                           point_size=12,  # Larger points
+                           render_points_as_spheres=True,
+                           opacity=0.9)
             
-            # Set camera and show
+            # Add colorbar for better understanding
+            plotter.add_scalar_bar(title="Motion Intensity", n_labels=5)
+            
+            # Set better camera position
             plotter.camera_position = 'isometric'
-            plotter.show_grid()
-            plotter.add_axes()
+            
+            # Add grid and axes with custom colors
+            plotter.show_grid(color='gray')
+            plotter.add_axes(color='black', line_width=3)
+            
+            # Add informative text
+            plotter.add_text("🎯 3D Motion Tracking\n"
+                           "• Plasma Colors: Low (Purple) → High (Yellow)\n"
+                           "• Mouse: Rotate & Zoom\n" 
+                           "• Bright Theme für bessere Sichtbarkeit",
+                           position='upper_left', font_size=10, color='black')
+            
+            # Enhanced lighting for better visibility  
+            plotter.enable_shadows()
             
             # Show in separate window (non-blocking)
             plotter.show(interactive=True)
