@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-🎯 Pixeltovoxelprojector - Master Motion Tracker
-==============================================
+Pixeltovoxelprojector - Master Motion Tracker VERBESSERT
+=======================================================
 
-Einheitliches GUI-System für alle Motion-Tracking-Modi:
-- 🦟 Mücken-Tracking (lokale Webcam)  
-- 🐦 Vogel-Tracking (lokale Webcam)
-- ✈️ Flugzeug-Tracking (lokale Webcam)
-- 🌊 Niagara Falls Demo (YouTube Live-Streams)
-- 📺 Webcam-Investigation (öffentliche Webcams)
+🎯 ALLE Originalfunktionen + VERBESSERUNGEN:
+- ✅ Alle Profile erhalten (Mosquito/Bird/Aircraft/Custom)  
+- ✅ Alle Video-Quellen erhalten (Webcam/YouTube/Streams)
+- ✅ Webcam-Auswahl komplett erhalten
+- ✅ Vorschau-Fenster komplett erhalten
+- ✅ 3D-Triangulation mit matplotlib (PyVista entfernt)
+- 🚀 Full HD Aufloesung (1920x1080 @ 30fps)
+- 🔍 1.5x groessere Vorschau-Fenster  
+- 🌤️ Anti-Wolken/Reflektions-Filter
+- ⚡ Performance-Optimierungen
+- 🔤 UTF-8 Sonderzeichen-Support
 
-Alle Profile und Quellen in einem Tool!
+VERSION: Enhanced - Alle Features + bessere UX/Performance
 """
 
 import tkinter as tk
@@ -78,7 +84,7 @@ class Stable3DTriangulation:
         self._setup_zoom_controls()
         
         # Timer für Live-Updates  
-        self.timer = self.fig.canvas.new_timer(interval=500)  # 2 FPS
+        self.timer = self.fig.canvas.new_timer(interval=400)  # 2.5 FPS - bessere Performance
         self.timer.add_callback(self._update_visualization)
         self.timer.start()
         
@@ -487,10 +493,10 @@ class Stable3DTriangulation:
             pass
     
     def _pixel_to_3d_direction(self, pixel_x, pixel_y, camera_name):
-        """Konvertiere 2D Pixel zu 3D Richtung - Himmel-Tracking"""
-        # Normalisiere Pixel-Koordinaten
-        norm_x = (pixel_x - 320) / 320  # Annahme: 640x480
-        norm_y = (pixel_y - 240) / 240
+        """Konvertiere 2D Pixel zu 3D Richtung - Full HD optimiert"""
+        # Normalisiere Pixel-Koordinaten für Full HD (1920x1080)
+        norm_x = (pixel_x - 960) / 960  # Full HD: 1920/2 = 960
+        norm_y = (pixel_y - 540) / 540  # Full HD: 1080/2 = 540
         
         # FOV-Faktor
         fov_factor = 0.7  # 60° FOV
@@ -546,39 +552,39 @@ class Stable3DTriangulation:
             self.timer.stop()
 
 
-# Detection Profiles für verschiedene Ziele
+# Detection Profiles für verschiedene Ziele - Full HD optimiert
 DETECTION_PROFILES = {
     "🦟 Mosquito": {
         "threshold": 15,
-        "min_area": 10,
-        "max_area": 150,
+        "min_area": 25,  # Skaliert für Full HD
+        "max_area": 400,  # Skaliert für Full HD 
         "fps": 60,
-        "resolution": (640, 480),
-        "description": "Optimiert für kleine, schnelle Insekten"
+        "resolution": (1920, 1080),  # Full HD
+        "description": "Optimiert für kleine, schnelle Insekten - Full HD"
     },
     "🐦 Bird": {
         "threshold": 30,
-        "min_area": 200,
-        "max_area": 5000,
+        "min_area": 500,  # Skaliert für Full HD
+        "max_area": 12000,  # Skaliert für Full HD
         "fps": 30,
-        "resolution": (800, 600),
-        "description": "Optimiert für Vögel und mittlere Flugobjekte"
+        "resolution": (1920, 1080),  # Full HD
+        "description": "Optimiert für Vögel und mittlere Flugobjekte - Full HD"
     },
     "✈️ Aircraft": {
         "threshold": 40,
-        "min_area": 500,
-        "max_area": 50000,
+        "min_area": 1200,  # Skaliert für Full HD
+        "max_area": 120000,  # Skaliert für Full HD
         "fps": 15,
-        "resolution": (1280, 720),
-        "description": "Optimiert für Flugzeuge und große Objekte"
+        "resolution": (1920, 1080),  # Full HD
+        "description": "Optimiert für Flugzeuge und große Objekte - Full HD"
     },
     "🎯 Custom": {
         "threshold": 25,
-        "min_area": 100,
-        "max_area": 10000,
+        "min_area": 250,  # Skaliert für Full HD
+        "max_area": 25000,  # Skaliert für Full HD
         "fps": 30,
-        "resolution": (640, 480),
-        "description": "Manuelle Konfiguration"
+        "resolution": (1920, 1080),  # Full HD
+        "description": "Manuelle Konfiguration - Full HD"
     }
 }
 
@@ -776,28 +782,28 @@ class MasterMotionTracker:
         # Advanced settings frame (initially hidden)
         self.settings_frame = ttk.LabelFrame(self.root, text="🔧 Advanced Settings")
         
-        # Threshold
+        # Threshold - VOGEL-OPTIMIERT  
         ttk.Label(self.settings_frame, text="🎯 Motion Threshold (Sensitivity):").grid(row=0, column=0, sticky=tk.W, padx=5)
-        self.threshold_var = tk.IntVar(value=25)
+        self.threshold_var = tk.IntVar(value=15)  # Sensibler für Vögel
         threshold_scale = ttk.Scale(self.settings_frame, from_=5, to=100, 
                                    variable=self.threshold_var, orient=tk.HORIZONTAL, length=200)
         threshold_scale.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=5)
         threshold_label = ttk.Label(self.settings_frame, textvariable=self.threshold_var)
         threshold_label.grid(row=0, column=2, padx=5)
         
-        # Min area
+        # Min area - DEUTLICH NIEDRIGER für kleine Vögel
         ttk.Label(self.settings_frame, text="📏 Min Object Size (pixels):").grid(row=1, column=0, sticky=tk.W, padx=5)
-        self.min_area_var = tk.IntVar(value=100)
-        min_area_scale = ttk.Scale(self.settings_frame, from_=1, to=1000, 
+        self.min_area_var = tk.IntVar(value=25)  # Viel niedriger: 25 statt 100
+        min_area_scale = ttk.Scale(self.settings_frame, from_=10, to=500, 
                                   variable=self.min_area_var, orient=tk.HORIZONTAL, length=200)
         min_area_scale.grid(row=1, column=1, sticky=(tk.W, tk.E), padx=5)
         min_area_label = ttk.Label(self.settings_frame, textvariable=self.min_area_var)
         min_area_label.grid(row=1, column=2, padx=5)
         
-        # Max area
+        # Max area - ANGEPASST für große Objekte
         ttk.Label(self.settings_frame, text="📐 Max Object Size (pixels):").grid(row=2, column=0, sticky=tk.W, padx=5)
-        self.max_area_var = tk.IntVar(value=10000)
-        max_area_scale = ttk.Scale(self.settings_frame, from_=1, to=50000, 
+        self.max_area_var = tk.IntVar(value=8000)  # Reduziert für bessere Performance
+        max_area_scale = ttk.Scale(self.settings_frame, from_=500, to=20000, 
                                   variable=self.max_area_var, orient=tk.HORIZONTAL, length=200)
         max_area_scale.grid(row=2, column=1, sticky=(tk.W, tk.E), padx=5)
         max_area_label = ttk.Label(self.settings_frame, textvariable=self.max_area_var)
@@ -820,22 +826,22 @@ class MasterMotionTracker:
         movement_label = ttk.Label(self.settings_frame, textvariable=self.min_movement_var)
         movement_label.grid(row=5, column=2, padx=5)
         
-        # Minimum Area Filter (gegen Reflexionen)
-        ttk.Label(self.settings_frame, text="📏 Min Area (gegen Reflexionen):").grid(row=6, column=0, sticky=tk.W, padx=5)
-        self.min_area_var = tk.IntVar(value=120)  
-        min_area_scale = ttk.Scale(self.settings_frame, from_=50, to=500,  
-                                  variable=self.min_area_var, orient=tk.HORIZONTAL, length=200)
+        # Minimum Area Filter (gegen Reflexionen) - SEPARATER FILTER
+        ttk.Label(self.settings_frame, text="📏 Anti-Wolken Min Area:").grid(row=6, column=0, sticky=tk.W, padx=5)
+        self.anti_cloud_min_area_var = tk.IntVar(value=60)  # Niedriger für Vogel-Erkennung
+        min_area_scale = ttk.Scale(self.settings_frame, from_=30, to=300,  
+                                  variable=self.anti_cloud_min_area_var, orient=tk.HORIZONTAL, length=200)
         min_area_scale.grid(row=6, column=1, sticky=(tk.W, tk.E), padx=5)
-        min_area_label = ttk.Label(self.settings_frame, textvariable=self.min_area_var)
+        min_area_label = ttk.Label(self.settings_frame, textvariable=self.anti_cloud_min_area_var)
         min_area_label.grid(row=6, column=2, padx=5)
         
-        # Maximum Area Filter (gegen große Wolken)
-        ttk.Label(self.settings_frame, text="☁️ Max Area (gegen Wolken):").grid(row=7, column=0, sticky=tk.W, padx=5)
-        self.max_area_var = tk.IntVar(value=2500)
+        # Maximum Area Filter (gegen große Wolken) - SEPARATER FILTER
+        ttk.Label(self.settings_frame, text="☁️ Anti-Wolken Max Area:").grid(row=7, column=0, sticky=tk.W, padx=5)
+        self.anti_cloud_max_area_var = tk.IntVar(value=2500)
         max_area_scale = ttk.Scale(self.settings_frame, from_=1000, to=8000,
-                                  variable=self.max_area_var, orient=tk.HORIZONTAL, length=200)
+                                  variable=self.anti_cloud_max_area_var, orient=tk.HORIZONTAL, length=200)
         max_area_scale.grid(row=7, column=1, sticky=(tk.W, tk.E), padx=5)
-        max_area_label = ttk.Label(self.settings_frame, textvariable=self.max_area_var)
+        max_area_label = ttk.Label(self.settings_frame, textvariable=self.anti_cloud_max_area_var)
         max_area_label.grid(row=7, column=2, padx=5)
         
         # Speed Range Filter (Vögel vs Wolken)
@@ -1088,7 +1094,7 @@ class MasterMotionTracker:
         """Live Last Detection Window - THREAD-SICHER"""
         try:
             cv2.namedWindow('🐦 Last Detection - Filtered Objects Only', cv2.WINDOW_NORMAL)
-            cv2.resizeWindow('🐦 Last Detection - Filtered Objects Only', 400, 300)
+            cv2.resizeWindow('🐦 Last Detection - Filtered Objects Only', 600, 450)  # Vergrößert von 400x300 auf 600x450
             
             # Create empty starting frame
             empty_frame = np.zeros((200, 300, 3), dtype=np.uint8)
@@ -1103,9 +1109,9 @@ class MasterMotionTracker:
                     if hasattr(self, 'last_detection_frame') and self.last_detection_frame is not None:
                         display_frame = self.last_detection_frame.copy()
                         
-                        # Resize for better visibility
-                        if display_frame.shape[0] < 150:
-                            scale = 150 / display_frame.shape[0]
+                        # Resize for much better visibility (3x scaling like the optimized version)
+                        if display_frame.shape[0] < 300:  # Erhöht von 150 auf 300
+                            scale = 300 / display_frame.shape[0]  # 3x Skalierung
                             new_width = int(display_frame.shape[1] * scale)
                             new_height = int(display_frame.shape[0] * scale)
                             display_frame = cv2.resize(display_frame, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
@@ -2004,13 +2010,13 @@ class MasterMotionTracker:
                 plotter.add_mesh(motion_point, color=camera_color, opacity=0.9)
                     
     def _pixel_to_3d_direction(self, pixel_x, pixel_y, camera_name):
-        """Konvertiere 2D Pixel-Koordinaten zu 3D Richtungsvektor - realistische 30° Rotation"""
-        # Vereinfachte Kamera-Transformation
+        """Konvertiere 2D Pixel-Koordinaten zu 3D Richtungsvektor - Full HD optimiert"""
+        # Vereinfachte Kamera-Transformation für Full HD
         # In einer echten Implementierung würden hier Kamera-Intrinsics verwendet
         
-        # Normalisiere Pixel-Koordinaten zu [-1, 1]
-        norm_x = (pixel_x - 320) / 320  # Annahme: 640x480 Auflösung
-        norm_y = (pixel_y - 240) / 240
+        # Normalisiere Pixel-Koordinaten zu [-1, 1] für Full HD (1920x1080)
+        norm_x = (pixel_x - 960) / 960  # Full HD: 1920/2 = 960
+        norm_y = (pixel_y - 540) / 540  # Full HD: 1080/2 = 540
         
         # Standard Field of View Annahme (60° typisch für Webcams)
         fov_factor = 0.7  # Für 60° FOV
@@ -2530,9 +2536,19 @@ class MasterMotionTracker:
                 try:
                     cap = cv2.VideoCapture(webcam_idx)
                     if cap.isOpened():
+                        # Set Full HD resolution (1920x1080) at 30 FPS
+                        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+                        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+                        cap.set(cv2.CAP_PROP_FPS, 30)
+                        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                        
                         # Test ob die Webcam wirklich verfügbar ist
                         ret, frame = cap.read()
                         if ret and frame is not None:
+                            actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                            actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                            self.log(f"🎥 Webcam {webcam_idx} Auflösung: {actual_width}x{actual_height}")
+                            
                             webcam_name = f"webcam_{webcam_idx}"
                             self.caps[webcam_name] = cap
                             self.bg_subtractors[webcam_name] = cv2.createBackgroundSubtractorMOG2()
@@ -2829,14 +2845,14 @@ class MasterMotionTracker:
                     else:
                         filter_reasons.append("FAST")
                 
-                # 2. Area Filter (gegen Reflexionen und große Wolken)
-                min_area_threshold = getattr(self, 'min_area_var', type('obj', (object,), {'get': lambda: 120})).get()
-                max_area_threshold = getattr(self, 'max_area_var', type('obj', (object,), {'get': lambda: 2500})).get()
+                # 2. Area Filter (gegen Reflexionen und große Wolken) - NEUE VARIABLEN
+                anti_cloud_min_area = getattr(self, 'anti_cloud_min_area_var', type('obj', (object,), {'get': lambda: 60})).get()
+                anti_cloud_max_area = getattr(self, 'anti_cloud_max_area_var', type('obj', (object,), {'get': lambda: 2500})).get()
                 
-                if area < min_area_threshold:
+                if area < anti_cloud_min_area:
                     passes_filter = False
                     filter_reasons.append("TINY")
-                elif area > max_area_threshold:
+                elif area > anti_cloud_max_area:
                     passes_filter = False 
                     filter_reasons.append("HUGE")
                 else:
@@ -2923,14 +2939,14 @@ class MasterMotionTracker:
         cv2.putText(result_frame, f'Total Motion: {motion_count} | 🦅 Vögel: {filtered_motion_count}', 
                    (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
         
-        # Filter-Parameter anzeigen
+        # Filter-Parameter anzeigen - KORREKTE VARIABLEN
         min_movement = getattr(self, 'min_movement_var', type('obj', (object,), {'get': lambda: 15})).get()
-        min_area_val = getattr(self, 'min_area_var', type('obj', (object,), {'get': lambda: 120})).get()
-        max_area_val = getattr(self, 'max_area_var', type('obj', (object,), {'get': lambda: 2500})).get()
+        anti_cloud_min = getattr(self, 'anti_cloud_min_area_var', type('obj', (object,), {'get': lambda: 60})).get()
+        anti_cloud_max = getattr(self, 'anti_cloud_max_area_var', type('obj', (object,), {'get': lambda: 2500})).get()
         min_speed_val = getattr(self, 'min_speed_var', type('obj', (object,), {'get': lambda: 20})).get()
         
-        cv2.putText(result_frame, f'🌤️ Anti-Wolken: Move≥{min_movement}px Area{min_area_val}-{max_area_val}px² Speed≥{min_speed_val}', 
-                   (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1)
+        cv2.putText(result_frame, f'🌤️ Anti-Wolken: Move≥{min_movement}px Area{anti_cloud_min}-{anti_cloud_max}px² Speed≥{min_speed_val}', 
+                   (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
                    
         return result_frame, filtered_motion_count  # Return filtered count
         
@@ -2952,8 +2968,8 @@ class MasterMotionTracker:
                 frame1 = frames[stream_names[0]]
                 frame2 = frames[stream_names[1]]
                 
-                # Resize to same height
-                height = min(frame1.shape[0], frame2.shape[0], 400)
+                # Resize to larger height for better visibility (1.2x scaling)
+                height = min(frame1.shape[0], frame2.shape[0], 480)  # Increased from 400 to 480
                 frame1_resized = cv2.resize(frame1, (int(frame1.shape[1] * height / frame1.shape[0]), height))
                 frame2_resized = cv2.resize(frame2, (int(frame2.shape[1] * height / frame2.shape[0]), height))
                 
@@ -2974,9 +2990,9 @@ class MasterMotionTracker:
                 cols = int(np.ceil(np.sqrt(num_cameras)))
                 rows = int(np.ceil(num_cameras / cols))
                 
-                # Resize all frames to same size for grid
-                target_width = 320  # Smaller for multiple views
-                target_height = 240
+                # Resize all frames to larger size for grid (1.5x scaling)
+                target_width = 480  # Increased from 320 to 480 (1.5x)
+                target_height = 360  # Increased from 240 to 360 (1.5x)
                 
                 grid_frames = []
                 for i, name in enumerate(stream_names):
